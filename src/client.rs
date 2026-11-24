@@ -35,18 +35,18 @@ struct Panel {
 }
 
 impl Panel {
-    /// Beside `chest` on a `size` screen: to its left, else to its right, as wide as fits (3 to 9
-    /// columns), as tall as the chest's screen.
+    /// Beside `chest` on a `size` screen: to its right (the game's recipe book opens on the left),
+    /// else to its left, as wide as fits (3 to 9 columns), as tall as the chest's screen.
     fn beside(chest: Rect, size: [f32; 2]) -> Option<Self> {
         let rows = ((chest[3] - TOP - BOTTOM) / SLOT).floor().max(1.0) as usize;
         let fits = |room: f32| (((room - 2.0 * MARGIN - SCROLL_W - 2.0) / SLOT).floor().max(0.0) as usize).min(MAX_COLUMNS);
         let width = |columns: usize| 2.0 * MARGIN + columns as f32 * SLOT + 2.0 + SCROLL_W;
         let left = fits(chest[0] - GAP);
         let right = fits(size[0] - (chest[0] + chest[2]) - GAP);
-        let (columns, x) = if left >= MIN_COLUMNS {
-            (left, chest[0] - GAP - width(left))
-        } else if right >= MIN_COLUMNS {
+        let (columns, x) = if right >= MIN_COLUMNS {
             (right, chest[0] + chest[2] + GAP)
+        } else if left >= MIN_COLUMNS {
+            (left, chest[0] - GAP - width(left))
         } else {
             return None;
         };

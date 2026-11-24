@@ -14,6 +14,8 @@ use std::sync::Mutex;
 pub const FIND: &str = "storage.find";
 /// The tag that shows the button emptying the inventory into storage.
 pub const EMPTY: &str = "storage.quick_deposit";
+/// The tag that lets a recipe-book click at a crafting table take its ingredients from the chests.
+pub const CRAFT: &str = "storage.craft";
 /// Tags `storage.network.<n>`: how many containers a chest shows together; 16 without any.
 const NETWORK: &str = "storage.network.";
 const NETWORK_START: usize = 16;
@@ -147,10 +149,10 @@ mod tests {
             .filter_map(|p| p["tag"].as_str().map(str::to_owned))
             .collect();
         for tag in &given {
-            let read = tag == FIND || tag == EMPTY || tag.strip_prefix(NETWORK).is_some_and(|n| n.parse::<usize>().is_ok());
+            let read = tag == FIND || tag == EMPTY || tag == CRAFT || tag.strip_prefix(NETWORK).is_some_and(|n| n.parse::<usize>().is_ok());
             assert!(read, "the tree gives {tag}, which Storage never reads");
         }
-        for wanted in [FIND, EMPTY] {
+        for wanted in [FIND, EMPTY, CRAFT] {
             assert!(given.iter().any(|t| t == wanted), "no node gives {wanted}");
         }
         assert!(given.iter().any(|t| network_of(std::slice::from_ref(t)) > NETWORK_START));

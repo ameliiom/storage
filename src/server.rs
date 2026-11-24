@@ -1,18 +1,19 @@
-//! The server side. Opening any linked chest (barrel, shulker box…) starts a session: the chest
-//! and everything joined to it are read and sent as one merged view, shown beside the chest's own
-//! screen. Clicks on that view take to the cursor or the inventory, or put the cursor's stack in,
+//! The server side. Opening any linked chest (barrel, shulker box…), or a station touching one (a
+//! crafting table, a furnace), starts a session: everything joined to it is read and sent as one
+//! merged view, shown beside the screen. Clicks on that view take to the cursor or the inventory, or put the cursor's stack in,
 //! each in one transaction, and every viewer gets the new view. Nothing is cached but each
 //! viewer's last view, so the containers stay the only truth. Containers are read and written
 //! through the game's `STORAGE` capability (by kind, by the rules hoppers follow).
 use crate::chain::{self, Block, Pos};
 use crate::entries::{self, Entry};
+use crate::craft;
 use crate::payloads::{self, Click, View};
 use crate::skills;
 use mod_api::{
     BlockMetadata, Hand, Host, HostBlockStates, HostTransaction, IPayloadContext, ItemPlace, ItemResource, LevelRef,
     PlayerRef, STORAGE, ServerHost, StoragePage, Transaction, VarInt, VarLong,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
 
 const LINKED: &str = "storage:linked";
@@ -85,8 +86,29 @@ fn held(host: &mut dyn ServerHost, level: LevelRef, pos: Pos) -> Vec<(ItemResour
     kinds
 }
 
-fn walk(host: &dyn Host, level: LevelRef, chest: Pos, cap: usize) -> Vec<Pos> {
-    chain::walk(chest, cap, |p| block_at(host, level, p))
+/// The network seen from `pos`: from it when it is a linked container (a chest), else from every
+/// linked container touching it (a crafting table or a furnace beside chests), at most `cap`.
+fn walk(host: &dyn Host, level: LevelRef, pos: Pos, cap: usize) -> Vec<Pos> {
+    let at = |p| block_at(host, level, p);
+    if at(pos) != Block::Other {
+        return chain::walk(pos, cap, at);
+    }
+    let mut found: Vec<Pos> = Vec::new();
+    for side in chain::SIDES {
+        let next = chain::add(pos, side);
+        if found.contains(&next) || at(next) == Block::Other {
+            continue;
+        }
+        for c in chain::walk(next, cap, at) {
+            if found.len() == cap {
+                return found;
+            }
+            if !found.contains(&c) {
+                found.push(c);
+            }
+        }
+    }
+    found
 }
 
 /// Reads the network: the containers in walk order, and the merged entries.
@@ -164,7 +186,7 @@ fn refresh_all(host: &mut dyn ServerHost) {
 /// A player opened a container's menu at `pos`: when it's a linked block, show its network.
 pub fn opened(host: &mut dyn ServerHost, uuid: u128, dimension: &str, pos: Pos) {
     let Some(level) = host.level(dimension) else { return };
-    if block_at(&*host, level, pos) == Block::Other {
+    if walk(&*host, level, pos, 1).is_empty() {
         return;
     }
     let Some(p) = player(&*host, uuid) else { return };
@@ -290,23 +312,56 @@ pub fn empty(host: &mut dyn ServerHost, p: PlayerRef) {
     refresh_all(host);
 }
 
-/// The containers a crafting station at `pos` lends its recipe book: every network touching it,
-/// up to the player's network size.
+/// The containers a mod crafting station at `pos` lends its recipe book: its network.
 pub fn sources(host: &dyn ServerHost, uuid: u128, pos: Pos) -> Vec<Pos> {
     let Some(p) = player(host, uuid) else { return Vec::new() };
     let Some(level) = p.dimension(host).and_then(|d| host.level(&d.to_string())) else { return Vec::new() };
-    let cap = skills::network(host, p);
-    let mut found: Vec<Pos> = Vec::new();
-    for side in chain::SIDES {
-        let next = chain::add(pos, side);
-        if found.contains(&next) || block_at(host, level, next) == Block::Other {
-            continue;
-        }
-        for c in walk(host, level, next, cap) {
-            if !found.contains(&c) && found.len() < cap {
-                found.push(c);
-            }
-        }
+    walk(host, level, pos, skills::network(host, p))
+}
+
+/// The crafting recipe types a crafting table's book places.
+const CRAFTING: [&str; 3] = ["minecraft:crafting", "minecraft:crafting_shaped", "minecraft:crafting_shapeless"];
+
+/// A recipe-book click at a station beside the network (with the comfort): take what the
+/// inventory lacks for it from the network. The game places the recipe after this hook (measured),
+/// so its own placement then fills the grid from the inventory with one click.
+pub fn recipe_clicked(host: &mut dyn ServerHost, uuid: u128, recipe: &str, all: bool) {
+    let (Some((level, chest, cap)), Some(p)) = (session(&*host, uuid), player(&*host, uuid)) else { return };
+    if !skills::has(&*host, p, skills::CRAFT) {
+        return;
     }
-    found
+    let Some(found) = CRAFTING.iter().find_map(|kind| host.recipes_of_type(kind).iter().find(|r| r.id == recipe).cloned()) else {
+        return;
+    };
+    let mut have: HashMap<ItemResource, u64> = HashMap::new();
+    for stack in p.inventory(&*host).unwrap_or_default() {
+        *have.entry(ItemResource::of(&stack)).or_default() += u64::from(stack.count());
+    }
+    let (_, entries) = read(host, level, chest, cap);
+    let stored: HashMap<ItemResource, u64> = entries.iter().map(|e| (e.kind.clone(), e.total)).collect();
+    let mut kinds: Vec<&ItemResource> = have.keys().chain(stored.keys().filter(|k| !have.contains_key(*k))).collect();
+    // Kinds the player holds first, then the most plentiful in the network.
+    kinds.sort_by_key(|k| (!have.contains_key(*k), std::cmp::Reverse(stored.get(*k).copied().unwrap_or(0))));
+    let slots: craft::Slots<ItemResource> = found
+        .ingredients
+        .iter()
+        .map(|ing| {
+            let empty = ing.items.is_empty() && ing.custom.is_none();
+            (!empty).then(|| kinds.iter().filter(|k| ing.test(&*host, k.as_stack())).map(|k| (*k).clone()).collect())
+        })
+        .collect();
+    let crafts = if all {
+        let per = found.results.first().map_or(1, |r| u64::from(r.count().max(1)));
+        let stack = found.results.first().and_then(|r| host.max_stack_size(r.item())).unwrap_or(64);
+        craft::most(&slots, (u64::from(stack) / per).max(1), &have, &stored)
+    } else {
+        1
+    };
+    let Some(take_list) = craft::plan(&slots, crafts.max(1), &have, &stored) else { return };
+    if take_list.is_empty() {
+        return;
+    }
+    for (kind, n) in &take_list {
+        take(host, p, ItemPlace::PlayerHand { player: uuid, hand: Hand::Main }, kind, *n);
+    }
 }

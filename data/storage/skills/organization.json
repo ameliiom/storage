@@ -64,6 +64,24 @@
       ]
     },
     {
+      "id": "craft",
+      "title": "storage.node.craft",
+      "icon": "minecraft:crafting_table",
+      "at": [
+        2,
+        0
+      ],
+      "cost": 3,
+      "needs": [
+        "quick_deposit"
+      ],
+      "perks": [
+        {
+          "tag": "storage.craft"
+        }
+      ]
+    },
+    {
       "id": "network_1",
       "title": "storage.node.network_1",
       "icon": "minecraft:chest",

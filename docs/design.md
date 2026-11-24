@@ -76,27 +76,28 @@ leaves every item where it was.
 - A double chest is read once (its left half), the walk still passing through both halves.
 - Only blocks in `storage:linked` join: furnaces, hoppers and machines are never read or emptied.
 
-## 7. Next: crafting from the chests (0.2, requirements)
+## 7. Crafting from the chests (0.2)
 
-Open the vanilla crafting table that touches your chests: the same storage panel shows beside it,
-and a click on a recipe in the recipe book takes its ingredients from those chests.
+Open the vanilla crafting table (or a furnace, any station) touching your chests: the same panel
+shows beside it, to the right, because the game's recipe book opens on the left. With the
+comfort **Recipes From Chests**, one click on a recipe in the recipe book takes the missing
+ingredients from those chests and the game's own placement fills the grid.
 
-**Measured first (2026-11-25, Horizon f037744):** Horizon's `recipe_sources` hook (lend chests
-to a recipe book) is **not asked for the vanilla crafting table**: a recipe-book click on a table
-beside two filled chests called it 0 times, as its doc says (mod crafting menus only). So the
-plan uses two pieces that do reach the vanilla table:
+**Measured (2026-11-25, Horizon f037744):**
 
-| Piece | How | Sure? |
-|---|---|---|
-| The panel beside the crafting table | the chest panel, opened for any container screen whose block touches a network (a table, a furnace…): drag what you need, as from a chest | yes: the same code as the chest panel, the cursor is the game's |
-| One click on a recipe | `player_recipe_book_click` (the server hears the click): take the missing ingredients from the network into the inventory in one transaction, then the game's own placement fills the grid | to verify first in the skeleton: whether the game places after the hook (one click) or before (a second click) |
+| What | Result |
+|---|---|
+| Horizon's `recipe_sources` (lend chests to a recipe book) at the vanilla table | not asked: 0 calls (mod crafting menus only). Storage still answers it, so a mod's own station beside chests gets them for free |
+| `player_recipe_book_click` | asked on every click, **before** the game places the recipe: Storage moves the missing ingredients into the inventory and the same click fills the grid, no second click |
+| One click on a stone pickaxe, 64 cobblestone and 32 sticks in two chests | grid holds 3 cobblestone and 2 sticks, result ready; chests 61 and 30: exactly one craft taken |
+| One click on a bow with no string anywhere | nothing taken (an ingredient nothing fits makes the recipe impossible; only an empty pattern cell is skipped) |
 
+- Crafting recipes are type `minecraft:crafting` (not the serializer names).
+- Kinds the player already holds are used first, then the most plentiful in the network.
+- Shift-click asks for as many crafts as there are ingredients for, up to a stack of the result
+  (tested in the planner, not yet in the game).
 - The recipe book keeps its red "missing" look for recipes whose ingredients are only in the
-  chests (the client counts the inventory alone); a click still works.
-- Ingredients taken for a click and not crafted stay in the inventory (as when you take them by
-  hand); the transaction never takes more than the recipe needs, times the stack for shift-click.
-- Comfort for the Organization tree: one-click recipes could be the earned part (the panel stays
-  free), decided after the skeleton's measurement.
+  chests (the client counts the inventory alone); the click works.
 
 ## 8. Not in this version
 

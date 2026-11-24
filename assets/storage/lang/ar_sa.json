@@ -17,5 +17,7 @@
   "skills.perk.storage.quick_deposit": "زر يحط شنطتك كلها في التخزين",
   "skills.perk.storage.network.64": "لين 64 صندوق مع بعض",
   "skills.perk.storage.network.256": "لين 256 صندوق مع بعض",
-  "skills.perk.storage.network.1024": "لين 1024 صندوق مع بعض"
+  "skills.perk.storage.network.1024": "لين 1024 صندوق مع بعض",
+  "storage.node.craft": "وصفات من الصناديق",
+  "skills.perk.storage.craft": "ضغطة وصفة عند طاولة الصناعة تسحب من الصناديق"
 }

@@ -8,11 +8,13 @@ For [Horizon](https://playhorizon.dev) (Minecraft: Java Edition 26.3 in Rust). O
 - **Put in**: click the list with something on the cursor (right-click: one).
 - **Search** in any language, `@mod` for a mod's items, `#tag` for an item tag. **Sort** by count, name or mod.
 - Every move updates every open panel at once, so friends see the same storage.
+- **Crafting table, furnace…** touching your chests: the same panel shows beside it, to grab ingredients or fuel.
 
 ## Comforts from Skills
-With [Skills](https://github.com/ameliiom/skills) 0.2, a sixth tree, **Organization**, grows as you move items and open chests:
+With [Skills](https://github.com/ameliiom/skills) 0.2 or later, a sixth tree, **Organization**, grows as you move items and open chests:
 - **Where Is It?**: F over an entry makes its chests glow for everyone.
 - **Quick Deposit**: a button puts your whole inventory (not the hotbar) in.
+- **Recipes From Chests**: at a crafting table beside your chests, one click on a recipe in the recipe book takes the ingredients from the chests.
 - **Bigger Network** I/II/III: 64, 256 and 1024 chests together (16 to start).
 
 Without Skills, the server setting **All comforts without Skills** opens them all.

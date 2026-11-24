@@ -1,6 +1,6 @@
 id = "storage"
 name = "Storage"
-version = "0.1.0"
+version = "0.2.0"
 description = "One terminal against your wall of chests shows everything in them as one inventory: same items merged, search, one click to take. Comforts are earned in the Skills tree Organization."
 authors = ["ameliiom"]
 license = "MIT"

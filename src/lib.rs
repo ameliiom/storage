@@ -8,6 +8,7 @@
 //! - **Comforts** (`skills.rs`): Find, quick deposit and a bigger network, earned in Skills' tree
 //!   Organization through Storage's own attributes and statistic.
 pub mod chain;
+pub mod craft;
 mod client;
 pub mod entries;
 pub mod payloads;
@@ -16,7 +17,7 @@ mod skills;
 
 use mod_api::{
     ClientHost, ClientTickPreEvent, Flow, Hooks, IPayloadContext, PayloadId, PlayerContainerCloseEvent,
-    PlayerContainerOpenEvent, PlayerLoggedOutEvent, RecipeSourcesEvent, Registrar, RegistrationContext, ScreenCharTypedPreEvent,
+    PlayerContainerOpenEvent, PlayerLoggedOutEvent, PlayerRecipeBookClickEvent, RecipeSourcesEvent, Registrar, RegistrationContext, ScreenCharTypedPreEvent,
     ScreenClosingEvent, ScreenKeyPressedPreEvent, ScreenMouseButtonPressedPreEvent, ScreenMouseScrolledPreEvent,
     ScreenRenderBackgroundEvent, ScreenRenderPostEvent, ServerHost, ServerTickEvent, ServerTickPhase, SettingSpec,
 };
@@ -55,6 +56,12 @@ impl Hooks for Mod {
     /// (Horizon asks this for mod crafting menus only, not the vanilla crafting table).
     fn recipe_sources(&self, host: &mut dyn ServerHost, event: &mut RecipeSourcesEvent<'_>) {
         event.sources.extend(server::sources(&*host, event.player, event.pos));
+    }
+
+    /// A recipe-book click at a crafting table beside the chests (with the comfort): the missing
+    /// ingredients come from the chests.
+    fn player_recipe_book_click(&self, host: &mut dyn ServerHost, event: &mut PlayerRecipeBookClickEvent<'_>) {
+        server::recipe_clicked(host, event.player, event.recipe, event.all);
     }
 
     fn player_container_open(&self, host: &mut dyn ServerHost, event: &mut PlayerContainerOpenEvent<'_>) {

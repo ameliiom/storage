@@ -17,5 +17,7 @@
   "skills.perk.storage.quick_deposit": "A button puts your whole inventory in",
   "skills.perk.storage.network.64": "Up to 64 chests together",
   "skills.perk.storage.network.256": "Up to 256 chests together",
-  "skills.perk.storage.network.1024": "Up to 1024 chests together"
+  "skills.perk.storage.network.1024": "Up to 1024 chests together",
+  "storage.node.craft": "Recipes From Chests",
+  "skills.perk.storage.craft": "A recipe-book click at a crafting table takes from the chests"
 }
