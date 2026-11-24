@@ -289,3 +289,24 @@ pub fn empty(host: &mut dyn ServerHost, p: PlayerRef) {
     }
     refresh_all(host);
 }
+
+/// The containers a crafting station at `pos` lends its recipe book: every network touching it,
+/// up to the player's network size.
+pub fn sources(host: &dyn ServerHost, uuid: u128, pos: Pos) -> Vec<Pos> {
+    let Some(p) = player(host, uuid) else { return Vec::new() };
+    let Some(level) = p.dimension(host).and_then(|d| host.level(&d.to_string())) else { return Vec::new() };
+    let cap = skills::network(host, p);
+    let mut found: Vec<Pos> = Vec::new();
+    for side in chain::SIDES {
+        let next = chain::add(pos, side);
+        if found.contains(&next) || block_at(host, level, next) == Block::Other {
+            continue;
+        }
+        for c in walk(host, level, next, cap) {
+            if !found.contains(&c) && found.len() < cap {
+                found.push(c);
+            }
+        }
+    }
+    found
+}

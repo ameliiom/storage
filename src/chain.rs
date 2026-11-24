@@ -19,9 +19,10 @@ pub enum Block {
     Half { counted: bool },
 }
 
-const SIDES: [Pos; 6] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+/// The six neighbours of a block.
+pub const SIDES: [Pos; 6] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 
-fn add(a: Pos, b: Pos) -> Pos {
+pub fn add(a: Pos, b: Pos) -> Pos {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 

@@ -16,7 +16,7 @@ mod skills;
 
 use mod_api::{
     ClientHost, ClientTickPreEvent, Flow, Hooks, IPayloadContext, PayloadId, PlayerContainerCloseEvent,
-    PlayerContainerOpenEvent, PlayerLoggedOutEvent, Registrar, RegistrationContext, ScreenCharTypedPreEvent,
+    PlayerContainerOpenEvent, PlayerLoggedOutEvent, RecipeSourcesEvent, Registrar, RegistrationContext, ScreenCharTypedPreEvent,
     ScreenClosingEvent, ScreenKeyPressedPreEvent, ScreenMouseButtonPressedPreEvent, ScreenMouseScrolledPreEvent,
     ScreenRenderBackgroundEvent, ScreenRenderPostEvent, ServerHost, ServerTickEvent, ServerTickPhase, SettingSpec,
 };
@@ -49,6 +49,12 @@ impl Hooks for Mod {
         let _ = payloads::VIEW.set(view.play_to_client_typed(PayloadId("storage:view".into()), on_view));
         let _ = payloads::CLICK.set(view.play_to_server_typed(PayloadId("storage:click".into()), server::click));
         let _ = payloads::COMFORT.set(view.play_to_server_typed(PayloadId("storage:comfort".into()), skills::comfort));
+    }
+
+    /// A mod crafting station's recipe book also takes ingredients from the chests touching it
+    /// (Horizon asks this for mod crafting menus only, not the vanilla crafting table).
+    fn recipe_sources(&self, host: &mut dyn ServerHost, event: &mut RecipeSourcesEvent<'_>) {
+        event.sources.extend(server::sources(&*host, event.player, event.pos));
     }
 
     fn player_container_open(&self, host: &mut dyn ServerHost, event: &mut PlayerContainerOpenEvent<'_>) {

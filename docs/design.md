@@ -76,8 +76,29 @@ leaves every item where it was.
 - A double chest is read once (its left half), the walk still passing through both halves.
 - Only blocks in `storage:linked` join: furnaces, hoppers and machines are never read or emptied.
 
-## 7. Not in this version
+## 7. Next: crafting from the chests (0.2, requirements)
 
-- A crafting grid that pulls ingredients from the network.
+Open the vanilla crafting table that touches your chests: the same storage panel shows beside it,
+and a click on a recipe in the recipe book takes its ingredients from those chests.
+
+**Measured first (2026-11-25, Horizon f037744):** Horizon's `recipe_sources` hook (lend chests
+to a recipe book) is **not asked for the vanilla crafting table**: a recipe-book click on a table
+beside two filled chests called it 0 times, as its doc says (mod crafting menus only). So the
+plan uses two pieces that do reach the vanilla table:
+
+| Piece | How | Sure? |
+|---|---|---|
+| The panel beside the crafting table | the chest panel, opened for any container screen whose block touches a network (a table, a furnace…): drag what you need, as from a chest | yes: the same code as the chest panel, the cursor is the game's |
+| One click on a recipe | `player_recipe_book_click` (the server hears the click): take the missing ingredients from the network into the inventory in one transaction, then the game's own placement fills the grid | to verify first in the skeleton: whether the game places after the hook (one click) or before (a second click) |
+
+- The recipe book keeps its red "missing" look for recipes whose ingredients are only in the
+  chests (the client counts the inventory alone); a click still works.
+- Ingredients taken for a click and not crafted stay in the inventory (as when you take them by
+  hand); the transaction never takes more than the recipe needs, times the stack for shift-click.
+- Comfort for the Organization tree: one-click recipes could be the earned part (the panel stays
+  free), decided after the skeleton's measurement.
+
+## 8. Not in this version
+
 - Grouping damaged or enchanted copies of one tool under one entry.
 - Opening storage from afar.
