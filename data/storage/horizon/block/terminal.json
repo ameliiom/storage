@@ -1,3 +1,0 @@
-{ "template": "minecraft:oak_planks",
-  "properties": { "hardness": 2.5, "sounds": "minecraft:chiseled_bookshelf" },
-  "item": true }

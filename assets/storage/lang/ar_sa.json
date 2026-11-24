@@ -1,4 +1,21 @@
 {
-  "block.storage.terminal": "طرفية التخزين",
-  "storage.title": "التخزين"
+  "storage.search": "بحث…",
+  "storage.joined": "%s صندوق",
+  "storage.sort.count": "مرتب حسب العدد",
+  "storage.sort.name": "مرتب حسب الاسم",
+  "storage.sort.mod": "مرتب حسب المود",
+  "storage.empty": "حط كل شي في التخزين (إلا شريط الأدوات)",
+  "storage.find_hint": "F: وريني الصندوق",
+  "storage.config.all_comforts": "كل الراحات بدون المهارات",
+  "storage.tree.organization": "التنظيم",
+  "storage.node.find": "وين هو؟",
+  "storage.node.quick_deposit": "تفريغ سريع",
+  "storage.node.network_1": "شبكة أكبر 1",
+  "storage.node.network_2": "شبكة أكبر 2",
+  "storage.node.network_3": "شبكة أكبر 3",
+  "skills.perk.storage.find": "F فوق غرض: صناديقه تلمع",
+  "skills.perk.storage.quick_deposit": "زر يحط شنطتك كلها في التخزين",
+  "skills.perk.storage.network.64": "لين 64 صندوق مع بعض",
+  "skills.perk.storage.network.256": "لين 256 صندوق مع بعض",
+  "skills.perk.storage.network.1024": "لين 1024 صندوق مع بعض"
 }

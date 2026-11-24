@@ -1,4 +1,21 @@
 {
-  "block.storage.terminal": "Storage Terminal",
-  "storage.title": "Storage"
+  "storage.search": "Search…",
+  "storage.joined": "%s chests",
+  "storage.sort.count": "Sorted by count",
+  "storage.sort.name": "Sorted by name",
+  "storage.sort.mod": "Sorted by mod",
+  "storage.empty": "Put everything in (not the hotbar)",
+  "storage.find_hint": "F: show the chest",
+  "storage.config.all_comforts": "All comforts without Skills",
+  "storage.tree.organization": "Organization",
+  "storage.node.find": "Where Is It?",
+  "storage.node.quick_deposit": "Quick Deposit",
+  "storage.node.network_1": "Bigger Network I",
+  "storage.node.network_2": "Bigger Network II",
+  "storage.node.network_3": "Bigger Network III",
+  "skills.perk.storage.find": "F over an item: its chests glow",
+  "skills.perk.storage.quick_deposit": "A button puts your whole inventory in",
+  "skills.perk.storage.network.64": "Up to 64 chests together",
+  "skills.perk.storage.network.256": "Up to 256 chests together",
+  "skills.perk.storage.network.1024": "Up to 1024 chests together"
 }

@@ -1,0 +1,119 @@
+{
+  "title": "storage.tree.organization",
+  "icon": "minecraft:chest",
+  "background": "minecraft:block/barrel_side",
+  "order": 6,
+  "curve": {
+    "base": 20,
+    "step": 10
+  },
+  "sources": [
+    {
+      "stat": "minecraft:custom",
+      "of": "storage:items_moved",
+      "xp": 0.05
+    },
+    {
+      "stat": "minecraft:custom",
+      "of": "minecraft:open_chest",
+      "xp": 1
+    },
+    {
+      "stat": "minecraft:custom",
+      "of": "minecraft:open_barrel",
+      "xp": 1
+    },
+    {
+      "stat": "minecraft:custom",
+      "of": "minecraft:open_shulker_box",
+      "xp": 1
+    }
+  ],
+  "nodes": [
+    {
+      "id": "find",
+      "title": "storage.node.find",
+      "icon": "minecraft:spyglass",
+      "at": [
+        0,
+        0
+      ],
+      "cost": 1,
+      "perks": [
+        {
+          "tag": "storage.find"
+        }
+      ]
+    },
+    {
+      "id": "quick_deposit",
+      "title": "storage.node.quick_deposit",
+      "icon": "minecraft:hopper",
+      "at": [
+        1,
+        0
+      ],
+      "cost": 2,
+      "needs": [
+        "find"
+      ],
+      "perks": [
+        {
+          "tag": "storage.quick_deposit"
+        }
+      ]
+    },
+    {
+      "id": "network_1",
+      "title": "storage.node.network_1",
+      "icon": "minecraft:chest",
+      "at": [
+        0,
+        1
+      ],
+      "cost": 2,
+      "perks": [
+        {
+          "tag": "storage.network.64"
+        }
+      ]
+    },
+    {
+      "id": "network_2",
+      "title": "storage.node.network_2",
+      "icon": "minecraft:barrel",
+      "at": [
+        1,
+        1
+      ],
+      "cost": 3,
+      "needs": [
+        "network_1"
+      ],
+      "perks": [
+        {
+          "tag": "storage.network.256"
+        }
+      ]
+    },
+    {
+      "id": "network_3",
+      "title": "storage.node.network_3",
+      "icon": "minecraft:ender_chest",
+      "at": [
+        2,
+        1
+      ],
+      "cost": 5,
+      "needs": [
+        "network_2",
+        "quick_deposit"
+      ],
+      "perks": [
+        {
+          "tag": "storage.network.1024"
+        }
+      ]
+    }
+  ]
+}

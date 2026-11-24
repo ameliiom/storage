@@ -1,5 +1,5 @@
-//! Which containers a terminal reaches: every linked block (`storage:linked`) touching the
-//! terminal or touching one that does, nearest first, up to a cap. Pure: the server says what
+//! Which containers a chest is joined to: the chest itself and every linked block
+//! (`storage:linked`) touching it or touching one that does, nearest first, up to a cap. Pure: the server says what
 //! each position holds; the walk is tested here.
 //!
 //! A double chest is two blocks that both answer for all 54 slots, so only one half of it is
@@ -25,11 +25,15 @@ fn add(a: Pos, b: Pos) -> Pos {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 
-/// The containers to read, nearest first (breadth first from the terminal), at most `cap` of them.
-pub fn walk(terminal: Pos, cap: usize, at: impl Fn(Pos) -> Block) -> Vec<Pos> {
-    let mut seen = BTreeSet::from([terminal]);
-    let mut queue = VecDeque::from([terminal]);
+/// The containers to read, nearest first (breadth first from `start`, itself first when it
+/// counts), at most `cap` of them.
+pub fn walk(start: Pos, cap: usize, at: impl Fn(Pos) -> Block) -> Vec<Pos> {
+    let mut seen = BTreeSet::from([start]);
+    let mut queue = VecDeque::from([start]);
     let mut found = Vec::new();
+    if cap > 0 && matches!(at(start), Block::Container | Block::Half { counted: true }) {
+        found.push(start);
+    }
     while let Some(pos) = queue.pop_front() {
         for side in SIDES {
             let next = add(pos, side);
@@ -68,6 +72,20 @@ mod tests {
         let blocks: Vec<(Pos, Block)> = (1..=4).map(|x| ([x, 0, 0], Block::Container)).collect();
         let found = walk([0, 0, 0], 256, world(&blocks));
         assert_eq!(found, vec![[1, 0, 0], [2, 0, 0], [3, 0, 0], [4, 0, 0]]);
+    }
+
+    #[test]
+    fn the_opened_chest_comes_first_and_its_other_half_leads_on() {
+        let blocks = [
+            ([0, 0, 0], Block::Container),
+            ([1, 0, 0], Block::Container),
+            ([0, 0, 1], Block::Half { counted: false }),
+            ([0, 0, 2], Block::Half { counted: true }),
+        ];
+        assert_eq!(walk([0, 0, 0], 256, world(&blocks)), vec![[0, 0, 0], [1, 0, 0], [0, 0, 2]]);
+        // Opened from the half that isn't read, the read half is reached first.
+        assert_eq!(walk([0, 0, 1], 256, world(&blocks)), vec![[0, 0, 2], [0, 0, 0], [1, 0, 0]]);
+        assert_eq!(walk([0, 0, 0], 1, world(&blocks)), vec![[0, 0, 0]]);
     }
 
     #[test]

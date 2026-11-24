@@ -1,36 +1,34 @@
-//! Storage: one terminal shows every chest joined to it as one inventory. See `docs/design.md`.
+//! Storage: open any chest joined to others and everything in all of them shows as one list
+//! beside it. See `docs/design.md`.
 //!
-//! - **The chain** (`chain.rs`): which containers a terminal reaches.
+//! - **The chain** (`chain.rs`): which containers a chest is joined to.
 //! - **The merged view** (`entries.rs`): one entry per kind, search, sort, splitting a take.
-//! - **The server** (`server.rs`): reads the network on a click, moves items in one transaction.
-//! - **The screen** (`client.rs`): the creative inventory's look, drawing the server's view.
+//! - **The server** (`server.rs`): a session per open chest, takes and puts in one transaction.
+//! - **The panel** (`client.rs`): beside the chest's own screen, in the game's look.
+//! - **Comforts** (`skills.rs`): Find, quick deposit and a bigger network, earned in Skills' tree
+//!   Organization through Storage's own attributes and statistic.
 pub mod chain;
 mod client;
 pub mod entries;
 pub mod payloads;
 mod server;
+mod skills;
 
 use mod_api::{
-    BlockPart, ClientHost, ClientTickPreEvent, Flow, Hooks, IPayloadContext, InteractionResult, PayloadId,
-    PlayerLoggedOutEvent, Registrar, RegistrationContext, ScreenMouseButtonPressedPreEvent,
-    ScreenMouseScrolledPreEvent, ScreenRenderPostEvent, ServerHost, UseWithoutItemEvent,
+    ClientHost, ClientTickPreEvent, Flow, Hooks, IPayloadContext, PayloadId, PlayerContainerCloseEvent,
+    PlayerContainerOpenEvent, PlayerLoggedOutEvent, Registrar, RegistrationContext, ScreenCharTypedPreEvent,
+    ScreenClosingEvent, ScreenKeyPressedPreEvent, ScreenMouseButtonPressedPreEvent, ScreenMouseScrolledPreEvent,
+    ScreenRenderBackgroundEvent, ScreenRenderPostEvent, ServerHost, ServerTickEvent, ServerTickPhase, SettingSpec,
 };
 #[allow(unused_imports)]
 use mod_api::prelude::*;
 
 pub(crate) const MOD_ID: &str = "storage";
-const TERMINAL: &str = "storage:terminal";
 
-/// The terminal block: an empty-hand click opens the network.
-struct Terminal;
-
-#[mod_api::horizon_part]
-impl BlockPart for Terminal {
-    fn use_without_item(&self, host: &mut dyn ServerHost, event: &mut UseWithoutItemEvent<'_>) -> Option<InteractionResult> {
-        let click = event.click;
-        server::open(host, click.player, click.dimension.key().id(), click.pos);
-        Some(InteractionResult::Success)
-    }
+/// Settings (Options > Mods > Storage).
+pub(crate) mod setting {
+    /// Opens every comfort for a world that doesn't use Skills.
+    pub const ALL_COMFORTS: &str = "all_comforts";
 }
 
 fn on_view(view: payloads::View, _: &mut dyn IPayloadContext) -> Result<(), String> {
@@ -44,31 +42,64 @@ pub struct Mod;
 #[mod_api::horizon_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
-        let terminal = r.block_key(TERMINAL);
-        r.block_part(terminal, Terminal);
+        let _ = r.register_setting(SettingSpec::toggle(setting::ALL_COMFORTS, "storage.config.all_comforts", false));
+        skills::register(r);
         let mut handlers = r.payload_handlers();
         let mut view = handlers.registrar("1").optional();
         let _ = payloads::VIEW.set(view.play_to_client_typed(PayloadId("storage:view".into()), on_view));
-        let _ = payloads::TAKE.set(view.play_to_server_typed(PayloadId("storage:take".into()), server::take));
+        let _ = payloads::CLICK.set(view.play_to_server_typed(PayloadId("storage:click".into()), server::click));
+        let _ = payloads::COMFORT.set(view.play_to_server_typed(PayloadId("storage:comfort".into()), skills::comfort));
+    }
+
+    fn player_container_open(&self, host: &mut dyn ServerHost, event: &mut PlayerContainerOpenEvent<'_>) {
+        if let Some(pos) = event.pos {
+            server::opened(host, event.player, event.dimension, pos);
+        }
+    }
+
+    fn player_container_close(&self, _: &mut dyn ServerHost, event: &mut PlayerContainerCloseEvent<'_>) {
+        server::closed(event.player);
+    }
+
+    fn player_logged_out(&self, _: &mut dyn ServerHost, event: &mut PlayerLoggedOutEvent<'_>) {
+        server::closed(event.player);
+    }
+
+    fn server_tick(&self, host: &mut dyn ServerHost, event: &mut ServerTickEvent<'_>) {
+        if matches!(event.phase, ServerTickPhase::ServerTickEnd { .. }) {
+            server::tick(host);
+        }
     }
 
     fn client_tick_pre(&self, host: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
         client::tick(host);
     }
 
+    fn screen_closing(&self, _: &dyn ClientHost, _: &mut ScreenClosingEvent<'_>) {
+        client::closed();
+    }
+
+    fn screen_render_background(&self, host: &dyn ClientHost, event: &mut ScreenRenderBackgroundEvent<'_>) {
+        client::draw(host, event.draw, event.screen);
+    }
+
     fn screen_render_post(&self, host: &dyn ClientHost, event: &mut ScreenRenderPostEvent<'_>) {
-        client::draw(host, event.draw, event.screen.mouse);
+        client::hover(host, event.draw, event.screen);
     }
 
     fn screen_mouse_button_pressed_pre(&self, host: &dyn ClientHost, event: &mut ScreenMouseButtonPressedPreEvent<'_>) -> Flow {
-        if client::press(host, event.button, event.screen.mouse) { Flow::Cancel } else { Flow::Continue }
+        if client::press(host, event.screen, event.button, event.modifiers) { Flow::Cancel } else { Flow::Continue }
     }
 
-    fn screen_mouse_scrolled_pre(&self, host: &dyn ClientHost, event: &mut ScreenMouseScrolledPreEvent<'_>) -> Flow {
-        if client::scroll(host, event.scroll[1]) { Flow::Cancel } else { Flow::Continue }
+    fn screen_mouse_scrolled_pre(&self, _: &dyn ClientHost, event: &mut ScreenMouseScrolledPreEvent<'_>) -> Flow {
+        if client::scroll(event.screen, event.scroll[1]) { Flow::Cancel } else { Flow::Continue }
     }
 
-    fn player_logged_out(&self, _: &mut dyn ServerHost, event: &mut PlayerLoggedOutEvent<'_>) {
-        server::left(event.player);
+    fn screen_key_pressed_pre(&self, host: &dyn ClientHost, event: &mut ScreenKeyPressedPreEvent<'_>) -> Flow {
+        if client::key(host, event.screen, event.key, event.modifiers) { Flow::Cancel } else { Flow::Continue }
+    }
+
+    fn screen_char_typed_pre(&self, host: &dyn ClientHost, event: &mut ScreenCharTypedPreEvent<'_>) -> Flow {
+        if client::char_typed(host, event.screen, event.c) { Flow::Cancel } else { Flow::Continue }
     }
 }
