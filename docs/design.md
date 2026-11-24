@@ -99,7 +99,42 @@ ingredients from those chests and the game's own placement fills the grid.
 - The recipe book keeps its red "missing" look for recipes whose ingredients are only in the
   chests (the client counts the inventory alone); the click works.
 
-## 8. Not in this version
+## 8. Reassessment (2026-11-25): what is missing, ranked
 
-- Grouping damaged or enchanted copies of one tool under one entry.
-- Opening storage from afar.
+The owner's verdict: filtering, sorting and much more are missing. Measured against the mods
+players use for this (Refined Storage's grid: sort by name/count/id/last changed with direction,
+sorting frozen while shift-clicking, tag/tooltip search, filter tabs; Tom's Simple Storage with
+its category-filter addon; AE2 Favorites' pinned items; Quark and Inventory Profiles' sort and
+"deposit matching / restock" buttons) and against the owner's own rule that every list ships its
+full operator toolkit, 0.2 is a bare list. What is missing, by how much it changes daily play:
+
+### Phase 1: organize (the core of a storage mod)
+
+| # | Gap | What it becomes | Built on |
+|---|---|---|---|
+| 1 | No physical sorting | **Sort chests** button: every joined chest compacted (partial stacks merged) and ordered by category, so the chests themselves are tidy | slot reads and writes through `ITEMS`, one transaction |
+| 2 | No routing | **Labels with item frames**: an item in a frame on a chest makes that chest the home of that item (or its tag/category); deposits and Sort chests go there first | vanilla item frames: found with `level.entities_in`, their item read from the entity's data (`entity_nbt`, `Item`); both calls exist in the API |
+| 3 | Only "put the cursor in" | **Deposit matching** (your inventory's items that storage already holds go in) and **Restock** (fill your partial stacks from storage) buttons | the existing transaction moves |
+| 4 | No filter | **Category tabs** under the panel: all, blocks, tools and weapons, food, redstone, materials, mods | the API has no creative-tab membership, so the categories are a data file of item tags (`#minecraft:pickaxes`, `#c:foods`…) that packs can extend, each tab's icon a vanilla item; a client-side filter of the view |
+| 5 | Sort is thin | sort by count, name, mod, **id, recently changed**, with a **direction** toggle; the order freezes while you shift-click so entries don't jump | client sort |
+| 6 | No sense of space | **Capacity bar**: slots used / total and the number of chests, coloured as it fills | the server already reads every slot |
+
+### Phase 2: speed
+
+| # | Gap | What it becomes |
+|---|---|---|
+| 7 | Few gestures | wheel over an entry takes/puts one, Q drops one, double-click takes all of a kind, Ctrl+F focuses search |
+| 8 | Noisy tools list | damaged and enchanted copies of one item grouped under one entry, opened with a click |
+| 9 | No favourites | **pin** an entry (stays first); pins remembered per player |
+| 10 | Search is basic | `$` searches tooltips and enchantments (the API's `item_resource_tooltip`), a clear button |
+| 11 | Panel height fixed | the panel uses the whole screen height beside the chest |
+
+### Phase 3: comforts for the Organization tree
+
+- **Auto-sort**: chests sort themselves when you close them.
+- **Storage from the inventory**: the panel beside your own inventory screen when you stand in
+  your storage room (no new block, no remote item).
+- **Low-stock marks**: an entry you pin can carry a minimum; below it the entry glows red.
+
+Not planned: grouping by Horizon-level "storage disks" or power (chores, against the owner's
+rules).
