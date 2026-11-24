@@ -1,0 +1,5 @@
+{ "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["PBP", "PCP", "PRP"],
+  "key": { "P": "#minecraft:planks", "B": "minecraft:book", "C": "minecraft:chest", "R": "minecraft:redstone" },
+  "result": { "id": "storage:terminal", "count": 1 } }

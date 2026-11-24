@@ -1,0 +1,16 @@
+id = "storage"
+name = "Storage"
+version = "0.1.0"
+description = "One terminal against your wall of chests shows everything in them as one inventory: same items merged, search, one click to take. Comforts are earned in the Skills tree Organization."
+authors = ["ameliiom"]
+license = "MIT"
+# A native mod: Rust in src/, compiled by the launcher against the game build [native] pins.
+api = "0.2"
+side = "both"
+# registries: required for content mods (the terminal block, lang files).
+capabilities = ["registries"]
+
+[native]
+game = "26.3"
+horizon = "f037744a79f9982c47876f49c5a3067279f88706"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"
