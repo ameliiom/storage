@@ -1,6 +1,6 @@
 //! Which containers a chest is joined to: the chest itself and every linked block
-//! (`storage:linked`) touching it or touching one that does, nearest first, up to a cap. Pure: the server says what
-//! each position holds; the walk is tested here.
+//! (`storage:linked`) touching it or touching one that does, nearest first, up to a cap.
+//! Pure: the server says what each position holds; the walk is tested here.
 //!
 //! A double chest is two blocks that both answer for all 54 slots, so only one half of it is
 //! counted (the walk still passes through both, so chests behind it are reached).

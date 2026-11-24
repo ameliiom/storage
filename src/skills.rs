@@ -132,4 +132,27 @@ mod tests {
         assert_eq!(network_of(&t(&["storage.network.8"])), 16);
         assert_eq!(network_of(&t(&["storage.network.99999", "storage.network.x"])), 4096);
     }
+
+    /// The tree file and this code name the same tags: every tag perk in the shipped
+    /// Organization tree is one Storage reads, and every comfort Storage reads is in the tree.
+    #[test]
+    fn the_shipped_tree_gives_exactly_the_tags_storage_reads() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data/storage/skills/organization.json");
+        let tree: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let given: Vec<String> = tree["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|n| n["perks"].as_array().unwrap().iter())
+            .filter_map(|p| p["tag"].as_str().map(str::to_owned))
+            .collect();
+        for tag in &given {
+            let read = tag == FIND || tag == EMPTY || tag.strip_prefix(NETWORK).is_some_and(|n| n.parse::<usize>().is_ok());
+            assert!(read, "the tree gives {tag}, which Storage never reads");
+        }
+        for wanted in [FIND, EMPTY] {
+            assert!(given.iter().any(|t| t == wanted), "no node gives {wanted}");
+        }
+        assert!(given.iter().any(|t| network_of(std::slice::from_ref(t)) > NETWORK_START));
+    }
 }

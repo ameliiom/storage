@@ -147,6 +147,7 @@ name = "mod-storage"
 version = "0.1.0"
 dependencies = [
  "horizon-mod-api",
+ "serde_json",
 ]
 
 [[package]]
