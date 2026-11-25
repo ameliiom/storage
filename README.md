@@ -17,6 +17,7 @@ For [Horizon](https://playhorizon.dev) (Minecraft: Java Edition 26.3 in Rust). O
 - **Sort chests** (brush): every joined chest is compacted and like goes with like. **Label** a chest by hanging an item frame on it: that item (and things like it) goes there first.
 - **Deposit matching** (hopper) puts in what storage already holds; **Restock** (dropper) fills your stacks from storage.
 - A **capacity bar** shows how full the chests are.
+- **Sort your bag**: a brush button at the top right of your inventory (and on a chest's inventory row) merges and orders your main inventory the same way; the hotbar stays.
 - Every move updates every open panel at once, so friends see the same storage.
 - **Crafting table, furnace…** touching your chests: the same panel shows beside it, to grab ingredients or fuel.
 

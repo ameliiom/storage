@@ -202,7 +202,7 @@ Phase 3 as built and measured (2026-11-25, 50 chests, Horizon f037744):
 - A frozen list (while shift-clicking) now keeps entries by id, not by index: the server's entry
   order can change between views, and the apples had jumped from second place to the eighth row.
 
-### Phase 4 (0.6.0): sort your bag — requirements (draft for the owner)
+### Phase 4: sort your bag — built in 0.6.0
 
 - A slot-look button with the brush (as the panel's Sort chests) at the top right of your own
   inventory, and of the inventory rows under any chest: one click sorts your main inventory
@@ -211,8 +211,12 @@ Phase 3 as built and measured (2026-11-25, 50 chests, Horizon f037744):
 - On the server, in one pass: read slots 9 to 35, merge, order with `organize::order` (the same
   rules as the chests), write them back with `set_inventory_slot`.
 - Measured: `set_inventory_slot` moves stacks safely and the client sees them the next tick (Hands,
-  2026-11-25); the order is the chests' (tested in `organize.rs`). Not measured yet: the button's
-  place beside the recipe book on narrow screens.
+  2026-11-25); the order is the chests' (tested in `organize.rs`).
+- Measured in the game: own inventory, 10 + 20 dirt, a sword, bread, redstone and iron spread
+  over the bag → sword, bread, redstone, iron, 30 dirt from the first slot, the hotbar untouched;
+  from a chest's screen, 7 + 9 cobblestone and a golden apple → apple, 16 cobblestone. Done in one
+  transaction (taken out, put back in order; a stack that would not go back rolls it all back).
+  Not measured: the button's place with the recipe book open on a narrow screen.
 
 Not planned: grouping by Horizon-level "storage disks" or power (chores, against the owner's
 rules).
