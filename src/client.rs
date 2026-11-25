@@ -511,7 +511,35 @@ fn capacity(view: &View) -> (u64, u64) {
 }
 
 /// Draws the panel under the screen's own items, tooltips and cursor stack.
+/// Where the bag's sort button sits, if this screen shows the player's inventory: top right of the
+/// own inventory (beside the crafting grid's title), or at the end of a chest's "Inventory" row.
+fn bag_button(screen: &ScreenView) -> Option<Rect> {
+    let [x, y, w, h] = screen.rect;
+    if own_inventory(screen) {
+        return Some([x + w - 16.0, y + 5.0, 11.0, 11.0]);
+    }
+    let chest = screen.menu.is_some_and(|m| m.starts_with("minecraft:generic_") || m == "minecraft:shulker_box");
+    chest.then_some([x + w - 18.0, y + h - 97.0, 11.0, 11.0])
+}
+
+/// The sort button: a small slot with the brush, the panel's own grammar.
+fn draw_bag_button(host: &dyn ClientHost, draw: &mut dyn DrawContext, screen: &ScreenView) {
+    let Some([x, y, w, h]) = bag_button(screen) else { return };
+    draw.fill([x, y, w, 1.0], 0xFF37_3737);
+    draw.fill([x, y, 1.0, h], 0xFF37_3737);
+    draw.fill([x + 1.0, y + h - 1.0, w - 1.0, 1.0], 0xFFFF_FFFF);
+    draw.fill([x + w - 1.0, y + 1.0, 1.0, h - 1.0], 0xFFFF_FFFF);
+    draw.fill([x + 1.0, y + 1.0, w - 2.0, h - 2.0], 0xFF8B_8B8B);
+    if let Some(key) = Identifier::parse("minecraft:brush").ok().and_then(|k| host.item_key(&k)) {
+        draw.item(key, [x + 1.0, y + 1.0], w - 2.0);
+    }
+    if inside([x, y, w, h], screen.mouse) {
+        draw.fill([x + 1.0, y + 1.0, w - 2.0, h - 2.0], 0x80FF_FFFF);
+    }
+}
+
 pub fn draw(host: &dyn ClientHost, draw: &mut dyn DrawContext, screen: &ScreenView) {
+    draw_bag_button(host, draw, screen);
     ui(|u| {
         // The own inventory asks once whether chests are within reach (the server answers with
         // a view only for those with the comfort).
@@ -636,6 +664,10 @@ fn sort_key(sort: Sort) -> &'static str {
 
 /// Hover: the list slot's highlight and tooltip, and every control's tooltip, over everything.
 pub fn hover(host: &dyn ClientHost, draw: &mut dyn DrawContext, screen: &ScreenView) {
+    if bag_button(screen).is_some_and(|r| inside(r, screen.mouse)) {
+        let _ = draw.gui_tooltip(&[Text::literal(tr(host, "storage.sort_bag", "Sort your bag"))], screen.mouse);
+        return;
+    }
     ui(|u| {
         let Some(panel) = u.panel else { return };
         if !showing(screen, u) {
@@ -722,6 +754,10 @@ pub fn press(host: &dyn ClientHost, screen: &ScreenView, button: i32, modifiers:
     let mouse = screen.mouse;
     let shift = modifiers & 1 != 0;
     ui(|u| {
+        if button == 0 && bag_button(screen).is_some_and(|r| inside(r, mouse)) {
+            u.outbox.push(Request::Comfort(Comfort { kind: VarInt(comfort::BAG), index: VarInt(-1), id: String::new() }));
+            return true;
+        }
         let Some(panel) = u.panel else { return false };
         if !showing(screen, u) || !inside(panel.rect, mouse) {
             if let Some((widgets, _)) = &mut u.widgets {

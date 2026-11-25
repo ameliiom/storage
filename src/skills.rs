@@ -104,6 +104,7 @@ pub fn comfort(request: Comfort, cx: &mut dyn IPayloadContext) -> Result<(), Str
         comfort::SORT => server::sort_chests(host, p),
         comfort::MATCH => server::deposit_matching(host, p),
         comfort::RESTOCK => server::restock(host, p),
+        comfort::BAG => server::sort_bag(host, p),
         _ => {}
     }
     Ok(())

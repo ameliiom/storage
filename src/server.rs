@@ -775,6 +775,55 @@ pub fn deposit_matching(host: &mut dyn ServerHost, p: PlayerRef) {
 }
 
 /// Restock: every partial stack in the inventory (hotbar included) is filled from storage.
+/// Sort the bag: the main inventory (slots 9 to 35; the hotbar and armour stay) with partial
+/// stacks merged, ordered as Sort chests orders chests, in one transaction: if the stacks would
+/// not go back, nothing moves.
+pub fn sort_bag(host: &mut dyn ServerHost, p: PlayerRef) {
+    let uuid = p.uuid();
+    let bag = || (9..36).map(move |slot| ItemPlace::PlayerSlot { player: uuid, slot });
+    let mut kinds: Vec<(ItemResource, u64)> = Vec::new();
+    for place in bag() {
+        let Some(kind) = place.resource(host) else { continue };
+        let n = u64::from(place.amount(host));
+        match kinds.iter_mut().find(|(k, _)| *k == kind) {
+            Some(entry) => entry.1 += n,
+            None => kinds.push((kind, n)),
+        }
+    }
+    if kinds.is_empty() {
+        return;
+    }
+    let mut order: Vec<(String, Category, bool, usize)> =
+        kinds.iter().enumerate().map(|(i, (k, _))| (k.item().id(&*host), category(&*host, k), false, i)).collect();
+    organize::order(&mut order, |k| (k.0.as_str(), k.1, k.2));
+    let result = host.transaction(|host, tx| {
+        for place in bag() {
+            if let Some(kind) = place.resource(host) {
+                let n = place.amount(host);
+                place.extract(host, tx, &kind, n);
+            }
+        }
+        let mut slots = bag();
+        for (_, _, _, i) in &order {
+            let (kind, total) = &kinds[*i];
+            let max = u64::from(host.max_stack_size(kind.item()).unwrap_or(64));
+            let mut left = *total;
+            while left > 0 {
+                let Some(place) = slots.next() else { return Err(()) };
+                let put = u64::from(place.insert(host, tx, kind, left.min(max) as u32));
+                if put == 0 {
+                    return Err(());
+                }
+                left -= put;
+            }
+        }
+        Ok(())
+    });
+    if result.is_err() {
+        eprintln!("[storage] sorting the bag rolled back");
+    }
+}
+
 pub fn restock(host: &mut dyn ServerHost, p: PlayerRef) {
     for slot in 0..36 {
         let place = ItemPlace::PlayerSlot { player: p.uuid(), slot };

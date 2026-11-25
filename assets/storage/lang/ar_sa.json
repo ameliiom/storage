@@ -45,5 +45,6 @@
   "storage.node.inventory": "التخزين في شنطتك",
   "skills.perk.storage.low_stock": "الأغراض المثبتة لها حد أدنى، وتحته تصير حمرا",
   "skills.perk.storage.auto_sort": "الصناديق تترتب بنفسها لما تسكرها بعد ما تغير شي",
-  "skills.perk.storage.inventory": "شنطتك تعرض الصناديق اللي حولك"
+  "skills.perk.storage.inventory": "شنطتك تعرض الصناديق اللي حولك",
+  "storage.sort_bag": "رتّب شنطتك"
 }

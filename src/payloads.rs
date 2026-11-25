@@ -72,6 +72,8 @@ pub mod comfort {
     pub const SORT: i32 = 2;
     pub const MATCH: i32 = 3;
     pub const RESTOCK: i32 = 4;
+    /// Sort the bag: the player's main inventory merged and ordered (everyone has it).
+    pub const BAG: i32 = 5;
 }
 
 /// Client → server: the player's own inventory screen opened (`open`) or closed; with the
