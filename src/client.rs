@@ -4,10 +4,10 @@
 //! cursor stay the game's own; the panel is drawn in the game's look (its panel, slot frames, the
 //! creative search field and scrollbar, item counts at half size as storage mods show big counts).
 //! Every click on it is a request the server answers with a new view.
-use crate::entries::{self, Shown, Sort};
+use crate::entries::{self, Pin, Shown, Sort};
 use crate::nbtjson;
 use crate::organize::Category;
-use crate::payloads::{self, Click, Comfort, View, action, comfort};
+use crate::payloads::{self, Click, Comfort, Near, View, action, comfort};
 use mod_api::client::hud_layout::{Blend, PoseOp};
 use mod_api::client::widgets::{Outcome, TextField, WidgetId, Widgets};
 #[allow(unused_imports)]
@@ -35,8 +35,12 @@ const EDGE: f32 = 4.0;
 const CLEAR_W: f32 = 11.0;
 /// Two presses on one entry closer than this are a double-click.
 const DOUBLE_MS: u64 = 300;
-/// The pinned item ids, one a line, in the game's `config/` folder.
+/// The pinned item ids, one a line (with a minimum after a space), in the game's `config/` folder.
 const PINS: &str = "storage-pins.txt";
+/// `View::comforts` bits the panel reads (`skills::COMFORTS` order).
+const FIND_BIT: i32 = 1;
+const EMPTY_BIT: i32 = 2;
+const LOW_BIT: i32 = 16;
 
 /// A tab of the strip at the panel's side: everything, one category, or other mods' items.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -163,8 +167,11 @@ struct Ui {
     view: Option<View>,
     /// Names in the player's language for the current view, made once per view.
     names: Vec<String>,
-    /// Entry indices (into the view) in the order shown, after tab, search and sort.
+    /// Entry indices (into `ids`) in the order shown, after tab, search and sort.
     shown: Vec<usize>,
+    /// The ids in the order last shown: a frozen list keeps them in place across new views,
+    /// whose indices may differ.
+    order: Vec<String>,
     sort: Sort,
     reverse: bool,
     tab: Option<Tab>,
@@ -184,8 +191,13 @@ struct Ui {
     stacks: Vec<Option<ItemStack>>,
     /// Each entry's tooltip in lower case, filled when a search has a `$` word.
     tips: Vec<String>,
-    /// Pinned item ids (they come first), read from `PINS` once.
-    pins: Option<Vec<String>>,
+    /// Pinned items (they come first), read from `PINS` once.
+    pins: Option<Vec<Pin>>,
+    /// The ids shown: the view's, then pinned items with a minimum that storage has none of
+    /// (their totals are 0, so they show red). Indices past the view's are these ghosts.
+    ids: Vec<String>,
+    /// The own-inventory panel was asked for (it is put away when the inventory closes).
+    near: bool,
     /// Item ids whose variants are shown one by one; others show as one group.
     open: HashSet<String>,
     /// The group heads shown: entry index → (total of the group, its kinds).
@@ -197,6 +209,7 @@ struct Ui {
 enum Request {
     Click(Click),
     Comfort(Comfort),
+    Near(Near),
 }
 
 static UI: Mutex<Option<Ui>> = Mutex::new(None);
@@ -232,29 +245,43 @@ pub fn closed() {
         u.frozen = false;
         u.open.clear();
         u.last = None;
+        u.ids.clear();
+        if std::mem::take(&mut u.near) {
+            u.outbox.push(Request::Near(Near { open: false }));
+        }
     });
 }
 
-fn load_pins(host: &dyn ClientHost) -> Vec<String> {
-    let Ok(path) = ConfigPath::new(PINS) else { return Vec::new() };
-    let Ok(bytes) = host.config_files().read(&path) else { return Vec::new() };
-    String::from_utf8_lossy(&bytes).lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_owned).collect()
+/// The player's own inventory (not a chest, a station or creative), where the panel shows the
+/// chests within reach for those with the comfort.
+fn own_inventory(screen: &ScreenView) -> bool {
+    screen.id == "inventory" && screen.menu.is_none()
 }
 
-fn save_pins(host: &dyn ClientHost, pins: &[String]) {
+fn load_pins(host: &dyn ClientHost) -> Vec<Pin> {
+    let Ok(path) = ConfigPath::new(PINS) else { return Vec::new() };
+    let Ok(bytes) = host.config_files().read(&path) else { return Vec::new() };
+    entries::read_pins(&String::from_utf8_lossy(&bytes))
+}
+
+fn save_pins(host: &dyn ClientHost, pins: &[Pin]) {
     let Ok(path) = ConfigPath::new(PINS) else { return };
-    if let Err(e) = host.config_files().write(&path, pins.join("\n").as_bytes()) {
+    if let Err(e) = host.config_files().write(&path, entries::write_pins(pins).as_bytes()) {
         eprintln!("[storage] keeping the pins: {e:?}");
     }
 }
 
-/// Entry `i`'s stack: the one the server described, else the plain item.
-fn stack_of(host: &dyn ClientHost, view: &View, i: usize) -> Option<ItemStack> {
-    let described = view.stacks.get(i).filter(|s| !s.is_empty()).and_then(|s| nbtjson::read(s));
+fn pin_of<'a>(u: &'a Ui, id: &str) -> Option<&'a Pin> {
+    u.pins.as_ref()?.iter().find(|p| p.id == id)
+}
+
+/// A stack described by the server (`json`), else the plain item `id`.
+fn stack_of(host: &dyn ClientHost, json: Option<&String>, id: &str) -> Option<ItemStack> {
+    let described = json.filter(|s| !s.is_empty()).and_then(|s| nbtjson::read(s));
     if let Some(stack) = described.and_then(|c| ItemStack::from_nbt(host, &c)) {
         return Some(stack);
     }
-    Identifier::parse(&view.ids[i]).ok().and_then(|k| host.item_key(&k)).map(ItemStack::of)
+    Identifier::parse(id).ok().and_then(|k| host.item_key(&k)).map(ItemStack::of)
 }
 
 /// The stack's tooltip lines as the game writes them (name, enchantments, effects, lore).
@@ -274,6 +301,7 @@ pub fn tick(host: &mut dyn ClientHost) {
         let sent = match request {
             Request::Click(r) => payloads::CLICK.get().map(|t| t.send(host, &r)),
             Request::Comfort(r) => payloads::COMFORT.get().map(|t| t.send(host, &r)),
+            Request::Near(r) => payloads::NEAR.get().map(|t| t.send(host, &r)),
         };
         if let Some(Err(e)) = sent {
             eprintln!("[storage] sending a request: {e:?}");
@@ -296,11 +324,11 @@ fn total(view: &View, i: usize) -> u64 {
     view.totals.get(i).map_or(0, |t| t.0.max(0) as u64)
 }
 
-fn in_tab(view: &View, i: usize, tab: Option<Tab>) -> bool {
+fn in_tab(view: &View, ids: &[String], i: usize, tab: Option<Tab>) -> bool {
     match tab {
         None | Some(Tab::All) => true,
         Some(Tab::Of(c)) => view.categories.get(i).and_then(|&n| Category::from_index(n)) == Some(c),
-        Some(Tab::Mods) => !view.ids[i].starts_with("minecraft:"),
+        Some(Tab::Mods) => !ids[i].starts_with("minecraft:"),
     }
 }
 
@@ -308,13 +336,20 @@ fn in_tab(view: &View, i: usize, tab: Option<Tab>) -> bool {
 /// or a choice). While frozen, entries keep the places they had; new kinds go at the end.
 fn reorder(host: &dyn ClientHost, u: &mut Ui) {
     let Some(view) = &u.view else { return };
-    if u.names.len() != view.ids.len() {
-        u.names = view.ids.iter().map(|id| item_name(host, id)).collect();
-        u.stacks = (0..view.ids.len()).map(|i| stack_of(host, view, i)).collect();
+    let pins = u.pins.get_or_insert_with(|| load_pins(host)).clone();
+    // Pinned items with a minimum that storage has none of still show, empty and red.
+    let low_marks = view.comforts.0 & LOW_BIT != 0;
+    let ghosts = pins.iter().filter(|p| low_marks && p.min > 0 && !view.ids.contains(&p.id)).map(|p| p.id.clone());
+    let ids: Vec<String> = view.ids.iter().cloned().chain(ghosts).collect();
+    if u.ids != ids || u.names.len() != ids.len() {
+        u.names = ids.iter().map(|id| item_name(host, id)).collect();
+        u.stacks = ids.iter().enumerate().map(|(i, id)| stack_of(host, view.stacks.get(i), id)).collect();
         u.tips.clear();
+        u.ids = ids;
     }
+    let ids = &u.ids;
     let query = u.query.clone();
-    if u.tips.len() != view.ids.len() && query.split_whitespace().any(|w| w.starts_with('$')) {
+    if u.tips.len() != ids.len() && query.split_whitespace().any(|w| w.starts_with('$')) {
         // The tooltip in the player's language, then the stack's data (enchantment and effect
         // ids), so `$sharp` finds Sharpness in any language.
         u.tips = u
@@ -330,8 +365,7 @@ fn reorder(host: &dyn ClientHost, u: &mut Ui) {
             })
             .collect();
     }
-    let all: Vec<Shown> = view
-        .ids
+    let all: Vec<Shown> = ids
         .iter()
         .enumerate()
         .map(|(i, id)| Shown {
@@ -345,23 +379,23 @@ fn reorder(host: &dyn ClientHost, u: &mut Ui) {
     let has_tag = |id: &str, tag: &str| {
         host.registry_entry("minecraft:item", id).and_then(|e| host.registry_entry_in_tag(&e, tag)).unwrap_or(false)
     };
-    let keep = |i: usize| in_tab(view, i, u.tab) && entries::matches(&query, &all[i], |t| has_tag(all[i].id, t));
+    let keep = |i: usize| in_tab(view, ids, i, u.tab) && entries::matches(&query, &all[i], |t| has_tag(all[i].id, t));
     let mut fresh: Vec<usize> = entries::order(&all, u.sort, u.reverse).into_iter().filter(|&i| keep(i)).collect();
     // Pinned items first, in the order otherwise chosen.
-    let pins = u.pins.get_or_insert_with(|| load_pins(host));
-    fresh.sort_by_key(|&i| !pins.contains(&view.ids[i]));
-    let totals: Vec<u64> = (0..view.ids.len()).map(|i| total(view, i)).collect();
-    let (fresh, groups) = entries::group(&view.ids, &totals, fresh, &u.open);
+    fresh.sort_by_key(|&i| !pins.iter().any(|p| p.id == ids[i]));
+    let totals: Vec<u64> = (0..ids.len()).map(|i| total(view, i)).collect();
+    let (fresh, groups) = entries::group(ids, &totals, fresh, &u.open);
     u.groups = groups;
     u.shown = if u.frozen {
-        let old: Vec<&str> = u.shown.iter().filter_map(|&i| u.view.as_ref().and_then(|v| v.ids.get(i)).map(String::as_str)).collect();
-        let place = |i: &usize| old.iter().position(|id| *id == view.ids[*i]).unwrap_or(usize::MAX);
+        let old = &u.order;
+        let place = |i: &usize| old.iter().position(|id| *id == ids[*i]).unwrap_or(usize::MAX);
         let mut kept = fresh.clone();
         kept.sort_by_key(place);
         kept
     } else {
         fresh
     };
+    u.order = u.shown.iter().map(|&i| u.ids[i].clone()).collect();
     let columns = u.panel.map_or(MAX_COLUMNS, |p| p.columns);
     let rows = u.panel.map_or(1, |p| p.rows);
     u.row = u.row.min(u.shown.len().div_ceil(columns).saturating_sub(rows));
@@ -461,12 +495,13 @@ fn button_icon(b: Button, sort: Sort) -> &'static str {
 
 /// The buttons this player has, in order with no gaps (quick deposit is an earned comfort).
 fn buttons(view: &View) -> Vec<Button> {
-    BUTTONS.into_iter().filter(|b| *b != Button::Empty || view.comforts.0 & 2 != 0).collect()
+    BUTTONS.into_iter().filter(|b| *b != Button::Empty || view.comforts.0 & EMPTY_BIT != 0).collect()
 }
 
-/// Whether the panel shows: a container screen is open and its chest is joined to others.
+/// Whether the panel shows: a container screen (or the own inventory beside chests) is open and
+/// its chest is joined to others.
 fn showing(screen: &ScreenView, u: &Ui) -> bool {
-    screen.menu.is_some() && u.view.as_ref().is_some_and(|v| v.containers.0 > 1)
+    (screen.menu.is_some() || own_inventory(screen)) && u.view.as_ref().is_some_and(|v| v.containers.0 > 1)
 }
 
 /// Slots used and slots in all.
@@ -478,6 +513,16 @@ fn capacity(view: &View) -> (u64, u64) {
 /// Draws the panel under the screen's own items, tooltips and cursor stack.
 pub fn draw(host: &dyn ClientHost, draw: &mut dyn DrawContext, screen: &ScreenView) {
     ui(|u| {
+        // The own inventory asks once whether chests are within reach (the server answers with
+        // a view only for those with the comfort).
+        if own_inventory(screen) && !u.near {
+            u.near = true;
+            // Only a view answering this request shows (one in flight from a chest just closed
+            // would be stale).
+            u.view = None;
+            u.names.clear();
+            u.outbox.push(Request::Near(Near { open: true }));
+        }
         if !showing(screen, u) {
             return;
         }
@@ -511,21 +556,26 @@ pub fn draw(host: &dyn ClientHost, draw: &mut dyn DrawContext, screen: &ScreenVi
             draw.text("x", [r[0] + (r[2] - draw.text_width("x")) / 2.0, r[1] + 2.0], colour, false);
         }
         let [gx, gy] = panel.grid();
-        let pins = u.pins.clone().unwrap_or_default();
+        let low_marks = view.comforts.0 & LOW_BIT != 0;
         for r in 0..panel.rows {
             for c in 0..panel.columns {
                 let at = [gx + c as f32 * SLOT, gy + r as f32 * SLOT];
                 frame(draw, at);
                 let Some(&i) = u.shown.get((u.row + r) * panel.columns + c) else { continue };
                 let inner = [at[0] + 1.0, at[1] + 1.0];
+                let group = u.groups.get(&i).copied();
+                let n = group.map_or(total(&view, i), |g| g.0);
+                let pin = pin_of(u, &u.ids[i]).cloned();
+                // Below its minimum: the well turns red, as a hurt heart flashes.
+                if low_marks && pin.as_ref().is_some_and(|p| entries::low(p.min, n)) {
+                    draw.fill([inner[0], inner[1], 16.0, 16.0], 0xFFC0_3030);
+                }
                 match u.stacks.get(i).and_then(Option::as_ref) {
                     Some(stack) => {
                         draw.item_stack(stack, inner, 16.0);
                     }
-                    None => icon(host, draw, &view.ids[i], inner),
+                    None => icon(host, draw, &u.ids[i], inner),
                 }
-                let group = u.groups.get(&i).copied();
-                let n = group.map_or(total(&view, i), |g| g.0);
                 if n > 1 {
                     count(draw, n, at);
                 }
@@ -535,7 +585,7 @@ pub fn draw(host: &dyn ClientHost, draw: &mut dyn DrawContext, screen: &ScreenVi
                     draw.fill([inner[0] + 13.0, inner[1], 1.0, 5.0], 0xFFFF_FFFF);
                 }
                 // A pin's mark: a gold corner at the top left.
-                if pins.contains(&view.ids[i]) {
+                if pin.is_some() {
                     draw.fill([inner[0], inner[1], 3.0, 1.0], 0xFFFF_D23C);
                     draw.fill([inner[0], inner[1], 1.0, 3.0], 0xFFFF_D23C);
                 }
@@ -621,11 +671,16 @@ pub fn hover(host: &dyn ClientHost, draw: &mut dyn DrawContext, screen: &ScreenV
                         ))),
                         None => l.push(Text::literal(fill("storage.total", "In storage: %1$s", &[total(&view, i).to_string()]))),
                     }
-                    if view.comforts.0 & 1 != 0 {
+                    if view.comforts.0 & FIND_BIT != 0 && i < view.ids.len() {
                         l.push(line("storage.find_hint", "F: show the chest"));
                     }
-                    let pinned = u.pins.as_ref().is_some_and(|p| p.contains(&view.ids[i]));
-                    l.push(if pinned { line("storage.unpin", "Middle-click: unpin") } else { line("storage.pin", "Middle-click: pin") });
+                    let pin = pin_of(u, &u.ids[i]).cloned();
+                    if view.comforts.0 & LOW_BIT != 0
+                        && let Some(p) = &pin
+                    {
+                        l.push(Text::literal(fill("storage.minimum", "Keep at least %1$s (Ctrl + wheel)", &[p.min.to_string()])));
+                    }
+                    l.push(if pin.is_some() { line("storage.unpin", "Middle-click: unpin") } else { line("storage.pin", "Middle-click: pin") });
                     l
                 }
                 None => vec![],
@@ -695,11 +750,11 @@ pub fn press(host: &dyn ClientHost, screen: &ScreenView, button: i32, modifiers:
             // Middle-click pins (or unpins) the item.
             if button == 2 {
                 if let Some(i) = index {
-                    let id = &view.ids[i];
+                    let id = u.ids[i].clone();
                     let pins = u.pins.get_or_insert_with(|| load_pins(host));
-                    match pins.iter().position(|p| p == id) {
+                    match pins.iter().position(|p| p.id == id) {
                         Some(at) => drop(pins.remove(at)),
-                        None => pins.push(id.clone()),
+                        None => pins.push(Pin { id, min: 0 }),
                     }
                     save_pins(host, pins);
                     reorder(host, u);
@@ -710,7 +765,7 @@ pub fn press(host: &dyn ClientHost, screen: &ScreenView, button: i32, modifiers:
             if let Some(i) = index
                 && u.groups.contains_key(&i)
             {
-                u.open.insert(view.ids[i].clone());
+                u.open.insert(u.ids[i].clone());
                 reorder(host, u);
                 return true;
             }
@@ -748,29 +803,51 @@ pub fn press(host: &dyn ClientHost, screen: &ScreenView, button: i32, modifiers:
     })
 }
 
-/// A request about entry `index` (none: the empty space after the list).
+/// A request about entry `i` (none, or a ghost past the view's entries: the empty space after
+/// the list, where a click puts the cursor in).
 fn click(view: &View, index: Option<usize>, button: i32, shift: bool, kind: i32) -> Request {
+    let index = index.filter(|&i| i < view.ids.len());
     let id = index.map(|i| view.ids[i].clone()).unwrap_or_default();
     let index = VarInt(index.map_or(-1, |i| i as i32));
     Request::Click(Click { index, id, button: VarInt(button), shift, action: VarInt(kind) })
 }
 
-/// The entry under the mouse, if the panel shows one there.
+/// The entry under the mouse, if the panel shows one there (ghosts included).
 fn hovered(u: &Ui, mouse: [f32; 2]) -> Option<usize> {
     let panel = u.panel?;
     u.shown.get(u.row * panel.columns + panel.slot_at(mouse)?).copied()
 }
 
+/// The entry under the mouse that storage holds (not a ghost).
+fn held_entry(u: &Ui, mouse: [f32; 2]) -> Option<usize> {
+    hovered(u, mouse).filter(|&i| u.view.as_ref().is_some_and(|v| i < v.ids.len()))
+}
+
 /// The wheel scrolls the list; with shift over an entry it moves one at a time: down takes one
-/// into the inventory, up puts one back.
-pub fn scroll(screen: &ScreenView, by: f64, modifiers: u32) -> bool {
+/// into the inventory, up puts one back. With Ctrl over a pinned entry (and the comfort), it
+/// raises or lowers the entry's minimum by a stack.
+pub fn scroll(host: &dyn ClientHost, screen: &ScreenView, by: f64, modifiers: u32) -> bool {
     ui(|u| {
         let Some(panel) = u.panel else { return false };
         if !showing(screen, u) || !inside(panel.rect, screen.mouse) {
             return false;
         }
+        let low_marks = u.view.as_ref().is_some_and(|v| v.comforts.0 & LOW_BIT != 0);
+        if modifiers & 2 != 0 && low_marks {
+            if let Some(i) = hovered(u, screen.mouse) {
+                let id = u.ids[i].clone();
+                let stack = Identifier::parse(&id).ok().and_then(|k| host.item_key(&k)).and_then(|k| host.max_stack_size(k)).unwrap_or(64);
+                let pins = u.pins.get_or_insert_with(|| load_pins(host));
+                if let Some(p) = pins.iter_mut().find(|p| p.id == id) {
+                    p.min = if by > 0.0 { p.min + u64::from(stack) } else { p.min.saturating_sub(u64::from(stack)) };
+                    save_pins(host, pins);
+                    reorder(host, u);
+                }
+            }
+            return true;
+        }
         if modifiers & 1 != 0 {
-            if let (Some(i), Some(view)) = (hovered(u, screen.mouse), &u.view)
+            if let (Some(i), Some(view)) = (held_entry(u, screen.mouse), &u.view)
                 && !u.groups.contains_key(&i)
             {
                 let kind = if by < 0.0 { action::ONE_OUT } else { action::ONE_IN };
@@ -818,7 +895,7 @@ pub fn key(host: &dyn ClientHost, screen: &ScreenView, key: &str, modifiers: u32
         let Some(view) = &u.view else { return false };
         // Q over an entry drops one in front of you, Ctrl+Q a stack, as from a slot.
         if key == "key.keyboard.q"
-            && let Some(i) = hovered(u, screen.mouse)
+            && let Some(i) = held_entry(u, screen.mouse)
             && !u.groups.contains_key(&i)
         {
             let request = click(view, Some(i), 0, false, if ctrl { action::DROP_STACK } else { action::DROP });
@@ -826,7 +903,7 @@ pub fn key(host: &dyn ClientHost, screen: &ScreenView, key: &str, modifiers: u32
             return true;
         }
         if key == "key.keyboard.f"
-            && view.comforts.0 & 1 != 0
+            && view.comforts.0 & FIND_BIT != 0
             && let Some(pos) = panel.slot_at(screen.mouse)
             && let Some(&i) = u.shown.get(u.row * panel.columns + pos)
         {

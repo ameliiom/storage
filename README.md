@@ -26,6 +26,9 @@ With [Skills](https://github.com/ameliiom/skills) 0.2 or later, a sixth tree, **
 - **Quick Deposit**: a button puts your whole inventory (not the hotbar) in.
 - **Recipes From Chests**: at a crafting table beside your chests, one click on a recipe in the recipe book takes the ingredients from the chests.
 - **Bigger Network** I/II/III: 64, 256 and 1024 chests together (16 to start).
+- **Running Low**: a pinned item keeps a minimum (Ctrl + wheel over it, a stack at a time); below it the entry turns red, and an item you ran out of still shows, empty and red.
+- **Tidy On Close**: when you close a chest after something moved, the chests sort themselves (not while a friend has them open).
+- **Storage In Your Bag**: open your own inventory within reach of your chests (5 blocks) and the same panel shows beside it; walk away and it goes.
 
 Without Skills, the server setting **All comforts without Skills** opens them all.
 

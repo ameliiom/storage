@@ -15,7 +15,8 @@ pub struct View {
     pub totals: Vec<VarLong>,
     /// How many containers are joined (1: the chest alone, and no panel is shown).
     pub containers: VarInt,
-    /// The comforts this player has earned: bit 0 Find, bit 1 quick deposit.
+    /// The comforts this player has earned, a bit each in `skills::COMFORTS` order: Find,
+    /// quick deposit, auto-sort, the inventory panel, low-stock marks.
     pub comforts: VarInt,
     /// Each entry's `organize::Category` index, beside `ids`.
     pub categories: Vec<u8>,
@@ -73,6 +74,14 @@ pub mod comfort {
     pub const RESTOCK: i32 = 4;
 }
 
+/// Client → server: the player's own inventory screen opened (`open`) or closed; with the
+/// comfort, the chests within reach show beside it.
+#[derive(PayloadCodec, Clone, Debug)]
+pub struct Near {
+    pub open: bool,
+}
+
 pub static VIEW: OnceLock<ToClient<View>> = OnceLock::new();
+pub static NEAR: OnceLock<ToServer<Near>> = OnceLock::new();
 pub static CLICK: OnceLock<ToServer<Click>> = OnceLock::new();
 pub static COMFORT: OnceLock<ToServer<Comfort>> = OnceLock::new();

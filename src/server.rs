@@ -22,6 +22,10 @@ const LINKED: &str = "storage:linked";
 /// Server ticks between refreshes of open chests, for changes made elsewhere (a hopper, a player
 /// at another chest): the game tells no one when a chest's contents change.
 const REFRESH: u32 = 20;
+/// How far the inventory reaches for chests (a player's block reach), and how far the player may
+/// then walk before the panel goes.
+const NEAR: i32 = 5;
+const NEAR_KEEP: i32 = 8;
 
 /// A player's open chest.
 struct Session {
@@ -31,6 +35,18 @@ struct Session {
     cap: usize,
     /// The entries as last sent, in the server's order: requests name them by index.
     entries: Vec<Entry<ItemResource>>,
+    /// Opened from the player's own inventory beside the chests, not by opening one.
+    near: bool,
+    /// What the network held when it opened (ids and totals, sorted), to tell on close whether
+    /// anything moved.
+    before: Option<Vec<(String, u64)>>,
+}
+
+/// What a network holds, comparable: each kind's id and total, sorted.
+fn fingerprint(host: &dyn Host, entries: &[Entry<ItemResource>]) -> Vec<(String, u64)> {
+    let mut f: Vec<(String, u64)> = entries.iter().map(|e| (e.kind.item().id(host), e.total)).collect();
+    f.sort();
+    f
 }
 
 struct State {
@@ -168,7 +184,7 @@ fn refresh(host: &mut dyn ServerHost, uuid: u128) {
     let (found, entries) = read(host, level, chest, cap);
     let shown = &entries[..entries.len().min(payloads::MAX_ENTRIES)];
     // The comforts this player has earned, so the panel shows only what works for them.
-    let comforts = [skills::FIND, skills::EMPTY]
+    let comforts = skills::COMFORTS
         .iter()
         .enumerate()
         .filter(|(_, tag)| skills::has(&*host, p, tag))
@@ -185,9 +201,11 @@ fn refresh(host: &mut dyn ServerHost, uuid: u128) {
         },
         stacks: shown.iter().map(|e| stack_json(&*host, &e.kind)).collect(),
     };
+    let held = fingerprint(&*host, &entries);
     with(|s| {
         if let Some(x) = s.sessions.get_mut(&uuid) {
             x.entries = entries;
+            x.before.get_or_insert(held);
         }
     });
     let Some(token) = payloads::VIEW.get() else { return };
@@ -207,6 +225,23 @@ fn stack_json(host: &dyn Host, kind: &ItemResource) -> String {
     if text.len() <= 4000 { text } else { String::new() }
 }
 
+/// Tells the client to put the panel away (a view of no containers).
+fn hide(host: &mut dyn ServerHost, uuid: u128) {
+    let (Some(p), Some(token)) = (player(&*host, uuid), payloads::VIEW.get()) else { return };
+    let view = View {
+        ids: Vec::new(),
+        totals: Vec::new(),
+        containers: VarInt(0),
+        comforts: VarInt(0),
+        categories: Vec::new(),
+        slots: Vec::new(),
+        stacks: Vec::new(),
+    };
+    if let Err(e) = token.send(host, p, &view) {
+        eprintln!("[storage] hiding the panel: {e:?}");
+    }
+}
+
 /// Every open chest: after a change one player made, the others see it at once.
 fn refresh_all(host: &mut dyn ServerHost) {
     for uuid in with(|s| s.sessions.keys().copied().collect::<Vec<_>>()) {
@@ -220,14 +255,86 @@ pub fn opened(host: &mut dyn ServerHost, uuid: u128, dimension: &str, pos: Pos) 
     if walk(&*host, level, pos, 1).is_empty() {
         return;
     }
+    start(host, uuid, dimension, pos, false);
+}
+
+fn start(host: &mut dyn ServerHost, uuid: u128, dimension: &str, pos: Pos, near: bool) {
     let Some(p) = player(&*host, uuid) else { return };
     let cap = skills::network(&*host, p);
-    with(|s| s.sessions.insert(uuid, Session { dimension: dimension.to_owned(), chest: pos, cap, entries: Vec::new() }));
+    let session = Session { dimension: dimension.to_owned(), chest: pos, cap, entries: Vec::new(), near, before: None };
+    with(|s| s.sessions.insert(uuid, session));
     refresh(host, uuid);
 }
 
-/// A player closed it, or left.
-pub fn closed(uuid: u128) {
+/// The player's own inventory opened (`open`) or closed: with the comfort, the chests within
+/// reach show beside it, the nearest one's network.
+pub fn near(host: &mut dyn ServerHost, p: PlayerRef, open: bool) {
+    let uuid = p.uuid();
+    if !open {
+        if with(|s| s.sessions.get(&uuid).is_some_and(|x| x.near)) {
+            closed(host, uuid);
+        }
+        return;
+    }
+    if !skills::has(&*host, p, skills::INVENTORY) {
+        return;
+    }
+    let (Some(dimension), Some(at)) = (p.dimension(&*host), p.entity().block_position(&*host)) else { return };
+    let dimension = dimension.to_string();
+    let Some(level) = host.level(&dimension) else { return };
+    let mut nearest: Option<(i32, Pos)> = None;
+    for dx in -NEAR..=NEAR {
+        for dy in -NEAR..=NEAR {
+            for dz in -NEAR..=NEAR {
+                let d = dx * dx + dy * dy + dz * dz;
+                if d > NEAR * NEAR || nearest.is_some_and(|(best, _)| best <= d) {
+                    continue;
+                }
+                let pos = [at[0] + dx, at[1] + 1 + dy, at[2] + dz];
+                if block_at(&*host, level, pos) != Block::Other {
+                    nearest = Some((d, pos));
+                }
+            }
+        }
+    }
+    if let Some((_, pos)) = nearest {
+        start(host, uuid, &dimension, pos, true);
+    }
+}
+
+/// An inventory panel whose player walked away from the chests goes.
+fn too_far(host: &dyn ServerHost, uuid: u128) -> bool {
+    let Some((dimension, chest, near)) = with(|s| s.sessions.get(&uuid).map(|x| (x.dimension.clone(), x.chest, x.near))) else { return false };
+    if !near {
+        return false;
+    }
+    let Some(p) = player(host, uuid) else { return true };
+    let here = p.dimension(host).map(|d| d.to_string());
+    let Some(at) = p.entity().block_position(host) else { return true };
+    let d = (0..3).map(|i| (at[i] - chest[i]).abs()).max().unwrap_or(0);
+    here.as_deref() != Some(dimension.as_str()) || d > NEAR_KEEP
+}
+
+/// A player closed the chest (or the inventory beside it). With Auto-Sort, a network whose
+/// contents changed while it was open sorts itself, unless someone else has it open.
+pub fn closed(host: &mut dyn ServerHost, uuid: u128) {
+    // The session goes first, so the sort's refresh sends nothing to a panel being closed.
+    let place = session(&*host, uuid);
+    let Some(gone) = with(|s| s.sessions.remove(&uuid)) else { return };
+    if let (Some(p), Some((level, chest, cap))) = (player(&*host, uuid), place)
+        && skills::has(&*host, p, skills::AUTO_SORT)
+    {
+        let (found, entries) = read(host, level, chest, cap);
+        let changed = gone.before.is_some_and(|b| b != fingerprint(&*host, &entries));
+        let shared = with(|s| s.sessions.values().any(|x| x.dimension == gone.dimension && found.contains(&x.chest)));
+        if changed && !shared {
+            sort_network(host, level, chest, cap);
+        }
+    }
+}
+
+/// A player left: their session goes, nothing sorts.
+pub fn forget(uuid: u128) {
     with(|s| s.sessions.remove(&uuid));
 }
 
@@ -238,6 +345,12 @@ pub fn tick(host: &mut dyn ServerHost) {
     });
     skills::tick(host, ticks);
     if due {
+        for uuid in with(|s| s.sessions.keys().copied().collect::<Vec<_>>()) {
+            if too_far(&*host, uuid) {
+                forget(uuid);
+                hide(host, uuid);
+            }
+        }
         refresh_all(host);
     }
 }
@@ -366,10 +479,11 @@ pub fn click(request: Click, cx: &mut dyn IPayloadContext) -> Result<(), String>
     let p: PlayerRef = cx.player().map_err(|e| format!("{e:?}"))?;
     let uuid = p.uuid();
     let host = cx.server_host().map_err(|e| format!("{e:?}"))?;
-    let Some(menu) = p.container_menu(&*host) else { return Ok(()) };
-    let cursor = ItemPlace::PlayerCursor { menu };
+    // The cursor of the open menu (the chest's, or the inventory's); some menus have none to
+    // offer, and then only the moves into the inventory work.
+    let cursor = p.container_menu(&*host).map(|menu| ItemPlace::PlayerCursor { menu });
     let right = request.button.0 == 1;
-    let held = cursor.resource(host);
+    let held = cursor.as_ref().and_then(|c| c.resource(host));
     let entry = seen(&*host, uuid, request.index.0, &request.id);
     let stack_of = |host: &dyn ServerHost, kind: &ItemResource| u64::from(host.max_stack_size(kind.item()).unwrap_or(64));
     match (request.action.0, &entry) {
@@ -398,6 +512,13 @@ pub fn click(request: Click, cx: &mut dyn IPayloadContext) -> Result<(), String>
     if request.action.0 != action::CLICK {
         return Ok(());
     }
+    let Some(cursor) = cursor else {
+        if let (true, Some(kind)) = (request.shift, entry) {
+            let stack = stack_of(&*host, &kind);
+            take_to_inventory(host, p, &kind, stack);
+        }
+        return Ok(());
+    };
     match (request.shift, held, entry) {
         // Shift: a stack of the entry into the inventory.
         (true, _, Some(kind)) => {
@@ -591,6 +712,11 @@ fn usage(host: &mut dyn ServerHost, level: LevelRef, containers: &[Pos]) -> (usi
 /// anything would not fit back, nothing moves.
 pub fn sort_chests(host: &mut dyn ServerHost, p: PlayerRef) {
     let Some((level, chest, cap)) = session(&*host, p.uuid()) else { return };
+    sort_network(host, level, chest, cap);
+}
+
+/// Compacts and orders the network seen from `chest`, then refreshes every open panel.
+fn sort_network(host: &mut dyn ServerHost, level: LevelRef, chest: Pos, cap: usize) {
     let (found, entries) = read(host, level, chest, cap);
     let labels = labels(host, level, &found);
     let mut kinds: Vec<(String, Category, bool, usize)> = entries

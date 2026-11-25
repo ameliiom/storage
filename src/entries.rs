@@ -149,6 +149,43 @@ pub fn group(ids: &[String], totals: &[u64], shown: Vec<usize>, open: &HashSet<S
     (kept, heads)
 }
 
+/// A pinned item: its id and the least of it the player wants kept (0: no minimum).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pin {
+    pub id: String,
+    pub min: u64,
+}
+
+/// The pins file: one pin a line, `id` or `id minimum`. Blank and broken lines are skipped; a
+/// repeated id keeps its first line.
+pub fn read_pins(text: &str) -> Vec<Pin> {
+    let mut pins: Vec<Pin> = Vec::new();
+    for line in text.lines() {
+        let mut words = line.split_whitespace();
+        let Some(id) = words.next() else { continue };
+        let min = match words.next() {
+            None => 0,
+            Some(n) => match n.parse() {
+                Ok(n) => n,
+                Err(_) => continue,
+            },
+        };
+        if !pins.iter().any(|p| p.id == id) {
+            pins.push(Pin { id: id.to_owned(), min });
+        }
+    }
+    pins
+}
+
+pub fn write_pins(pins: &[Pin]) -> String {
+    pins.iter().map(|p| if p.min > 0 { format!("{} {}", p.id, p.min) } else { p.id.clone() }).collect::<Vec<_>>().join("\n")
+}
+
+/// Whether a total is below a pin's minimum (no minimum: never).
+pub fn low(min: u64, total: u64) -> bool {
+    min > 0 && total < min
+}
+
 /// A total as an item count shows it: up to 999 as is, then `1.2k`, `15k`, `1.2M`, Latin digits.
 pub fn count_text(n: u64) -> String {
     fn short(n: u64, unit: u64, suffix: &str) -> String {
@@ -324,5 +361,17 @@ mod tests {
         // A search that leaves one variant shows it alone, not as a group.
         let (kept, heads) = group(&ids, &totals, vec![3, 1], &HashSet::new());
         assert_eq!((kept, heads.len()), (vec![3, 1], 0));
+    }
+
+    #[test]
+    fn pins_keep_their_minimums_through_the_file() {
+        let pins = read_pins("minecraft:torch 128\n\nminecraft:apple\nbroken line here\nminecraft:torch 5\nminecraft:coal x\n");
+        assert_eq!(
+            pins,
+            vec![Pin { id: "minecraft:torch".into(), min: 128 }, Pin { id: "minecraft:apple".into(), min: 0 }]
+        );
+        assert_eq!(read_pins(&write_pins(&pins)), pins);
+        assert_eq!(write_pins(&pins), "minecraft:torch 128\nminecraft:apple");
+        assert!(low(128, 127) && !low(128, 128) && !low(0, 0));
     }
 }

@@ -129,7 +129,7 @@ full operator toolkit, 0.2 is a bare list. What is missing, by how much it chang
 | 10 | Search is basic | `$` searches tooltips and enchantments (the API's `item_resource_tooltip`), a clear button |
 | 11 | Panel height fixed | the panel uses the whole screen height beside the chest |
 
-### Phase 3: comforts for the Organization tree
+### Phase 3: comforts for the Organization tree — built in 0.5.0
 
 - **Auto-sort**: chests sort themselves when you close them.
 - **Storage from the inventory**: the panel beside your own inventory screen when you stand in
@@ -176,6 +176,31 @@ Phase 2 as built and measured (2026-11-25, 50 chests, Horizon f037744):
 - **Panel height**: the whole screen height minus 4 pixels, beside the chest; a test checks every
   control stays inside at 6 widths.
 - A double-click needs both presses within 300 ms; two scripted clicks 270 ms apart were caught.
+
+Phase 3 as built and measured (2026-11-25, 50 chests, Horizon f037744):
+
+- Three nodes in a third row of Organization, each needing its neighbour: **Running Low**
+  (`storage.low_stock`), **Tidy On Close** (`storage.auto_sort`), **Storage In Your Bag**
+  (`storage.inventory`).
+- **Storage in your bag**: the own inventory is `ScreenView.id == "inventory"` with no menu; the
+  client asks once per opening (`storage:near`), the server finds the nearest linked block within
+  5 blocks of the player and opens a session on it. Its cursor is the inventory menu's
+  (`container_menu` answers for it): a take to the cursor, a place into a slot and shift-clicks
+  all worked. 14 blocks away the open panel went within a second (a view of no containers), and
+  reopening there showed none.
+- **Tidy on close**: a session remembers what the network held when it opened (ids and totals);
+  on close, if that changed and no one else has the network open, it sorts. Taking 64 apples and
+  closing the inventory sorted the room (the first chest went from a mixed stone stack to echo
+  shards in category order; used slots fell from almost all to about a third). Closing the
+  inventory also fires the server's container close, so either path ends the session once.
+- The session leaves before the sort, so the sort's refresh never reaches the panel being closed;
+  and the own inventory drops any view it held when it asks, so a view in flight from a chest just
+  closed can't show (found when a post-sort view arrived after the close).
+- **Running low**: pins are `id minimum` lines in `config/storage-pins.txt`; Ctrl + wheel over a
+  pinned entry changed 512 to 576 apples; 223 apples showed red; with every torch removed, the
+  pinned torch (minimum 64) still showed, empty and red.
+- A frozen list (while shift-clicking) now keeps entries by id, not by index: the server's entry
+  order can change between views, and the apples had jumped from second place to the eighth row.
 
 Not planned: grouping by Horizon-level "storage disks" or power (chores, against the owner's
 rules).

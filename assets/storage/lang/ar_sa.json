@@ -38,5 +38,12 @@
   "storage.tidy": "رتّب الصناديق: ادمج الستاكات وحط المتشابه مع بعض",
   "storage.match": "حط اللي موجود أصلاً في التخزين",
   "storage.restock": "كمّل ستاكاتك من التخزين",
-  "storage.capacity": "%1$s / %2$s خانة، %3$s صندوق"
+  "storage.capacity": "%1$s / %2$s خانة، %3$s صندوق",
+  "storage.minimum": "خل منه %1$s على الأقل (Ctrl + العجلة)",
+  "storage.node.low_stock": "قرب يخلص",
+  "storage.node.auto_sort": "ترتيب عند السكّة",
+  "storage.node.inventory": "التخزين في شنطتك",
+  "skills.perk.storage.low_stock": "الأغراض المثبتة لها حد أدنى، وتحته تصير حمرا",
+  "skills.perk.storage.auto_sort": "الصناديق تترتب بنفسها لما تسكرها بعد ما تغير شي",
+  "skills.perk.storage.inventory": "شنطتك تعرض الصناديق اللي حولك"
 }

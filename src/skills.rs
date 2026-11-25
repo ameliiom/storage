@@ -1,9 +1,10 @@
 //! The comforts earned in the Skills tree Organization, with no code tie to Skills: an unlocked
 //! node gives the player a vanilla tag (`/tag`) that Storage reads (`storage.find`,
-//! `storage.quick_deposit`, `storage.network.<n>`), Skills earns tree experience from Storage's own
+//! `storage.quick_deposit`, `storage.low_stock`, `storage.auto_sort`, `storage.inventory`,
+//! `storage.network.<n>`), Skills earns tree experience from Storage's own
 //! statistic, and the tree ships as a data file only Skills reads. Without Skills, the server's
 //! `all_comforts` setting opens them.
-use crate::payloads::{Comfort, comfort};
+use crate::payloads::{Comfort, Near, comfort};
 use crate::server;
 #[allow(unused_imports)]
 use mod_api::prelude::*;
@@ -16,6 +17,15 @@ pub const FIND: &str = "storage.find";
 pub const EMPTY: &str = "storage.quick_deposit";
 /// The tag that lets a recipe-book click at a crafting table take its ingredients from the chests.
 pub const CRAFT: &str = "storage.craft";
+/// The tag that sorts a network when its chest closes after something moved.
+pub const AUTO_SORT: &str = "storage.auto_sort";
+/// The tag that shows the chests within reach beside the player's own inventory.
+pub const INVENTORY: &str = "storage.inventory";
+/// The tag that lets pinned entries keep a minimum, marked red below it.
+pub const LOW_STOCK: &str = "storage.low_stock";
+/// The comforts a view reports, a bit each in this order (`View::comforts`).
+pub const COMFORTS: [&str; 5] = [FIND, EMPTY, AUTO_SORT, INVENTORY, LOW_STOCK];
+
 /// Tags `storage.network.<n>`: how many containers a chest shows together; 16 without any.
 const NETWORK: &str = "storage.network.";
 const NETWORK_START: usize = 16;
@@ -99,6 +109,13 @@ pub fn comfort(request: Comfort, cx: &mut dyn IPayloadContext) -> Result<(), Str
     Ok(())
 }
 
+pub fn near(request: Near, cx: &mut dyn IPayloadContext) -> Result<(), String> {
+    let p: PlayerRef = cx.player().map_err(|e| format!("{e:?}"))?;
+    let host = cx.server_host().map_err(|e| format!("{e:?}"))?;
+    server::near(host, p, request.open);
+    Ok(())
+}
+
 /// Each server tick: found chests puff glowing particles for everyone to see.
 pub fn tick(host: &mut dyn ServerHost, ticks: u32) {
     if !ticks.is_multiple_of(GLOW_EVERY) {
@@ -152,10 +169,10 @@ mod tests {
             .filter_map(|p| p["tag"].as_str().map(str::to_owned))
             .collect();
         for tag in &given {
-            let read = tag == FIND || tag == EMPTY || tag == CRAFT || tag.strip_prefix(NETWORK).is_some_and(|n| n.parse::<usize>().is_ok());
+            let read = COMFORTS.contains(&tag.as_str()) || tag == CRAFT || tag.strip_prefix(NETWORK).is_some_and(|n| n.parse::<usize>().is_ok());
             assert!(read, "the tree gives {tag}, which Storage never reads");
         }
-        for wanted in [FIND, EMPTY, CRAFT] {
+        for wanted in COMFORTS.into_iter().chain([CRAFT]) {
             assert!(given.iter().any(|t| t == wanted), "no node gives {wanted}");
         }
         assert!(given.iter().any(|t| network_of(std::slice::from_ref(t)) > NETWORK_START));

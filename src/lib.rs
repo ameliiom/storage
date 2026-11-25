@@ -53,6 +53,7 @@ impl Hooks for Mod {
         let _ = payloads::VIEW.set(view.play_to_client_typed(PayloadId("storage:view".into()), on_view));
         let _ = payloads::CLICK.set(view.play_to_server_typed(PayloadId("storage:click".into()), server::click));
         let _ = payloads::COMFORT.set(view.play_to_server_typed(PayloadId("storage:comfort".into()), skills::comfort));
+        let _ = payloads::NEAR.set(view.play_to_server_typed(PayloadId("storage:near".into()), skills::near));
     }
 
     /// A mod crafting station's recipe book also takes ingredients from the chests touching it
@@ -83,12 +84,12 @@ impl Hooks for Mod {
         }
     }
 
-    fn player_container_close(&self, _: &mut dyn ServerHost, event: &mut PlayerContainerCloseEvent<'_>) {
-        server::closed(event.player);
+    fn player_container_close(&self, host: &mut dyn ServerHost, event: &mut PlayerContainerCloseEvent<'_>) {
+        server::closed(host, event.player);
     }
 
     fn player_logged_out(&self, _: &mut dyn ServerHost, event: &mut PlayerLoggedOutEvent<'_>) {
-        server::closed(event.player);
+        server::forget(event.player);
     }
 
     fn server_tick(&self, host: &mut dyn ServerHost, event: &mut ServerTickEvent<'_>) {
@@ -117,8 +118,8 @@ impl Hooks for Mod {
         if client::press(host, event.screen, event.button, event.modifiers) { Flow::Cancel } else { Flow::Continue }
     }
 
-    fn screen_mouse_scrolled_pre(&self, _: &dyn ClientHost, event: &mut ScreenMouseScrolledPreEvent<'_>) -> Flow {
-        if client::scroll(event.screen, event.scroll[1], event.modifiers) { Flow::Cancel } else { Flow::Continue }
+    fn screen_mouse_scrolled_pre(&self, host: &dyn ClientHost, event: &mut ScreenMouseScrolledPreEvent<'_>) -> Flow {
+        if client::scroll(host, event.screen, event.scroll[1], event.modifiers) { Flow::Cancel } else { Flow::Continue }
     }
 
     fn screen_key_pressed_pre(&self, host: &dyn ClientHost, event: &mut ScreenKeyPressedPreEvent<'_>) -> Flow {

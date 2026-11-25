@@ -132,6 +132,60 @@
           "tag": "storage.network.1024"
         }
       ]
+    },
+    {
+      "id": "low_stock",
+      "title": "storage.node.low_stock",
+      "icon": "minecraft:redstone_torch",
+      "at": [
+        0,
+        2
+      ],
+      "cost": 2,
+      "needs": [
+        "network_1"
+      ],
+      "perks": [
+        {
+          "tag": "storage.low_stock"
+        }
+      ]
+    },
+    {
+      "id": "auto_sort",
+      "title": "storage.node.auto_sort",
+      "icon": "minecraft:piston",
+      "at": [
+        1,
+        2
+      ],
+      "cost": 3,
+      "needs": [
+        "low_stock"
+      ],
+      "perks": [
+        {
+          "tag": "storage.auto_sort"
+        }
+      ]
+    },
+    {
+      "id": "inventory",
+      "title": "storage.node.inventory",
+      "icon": "minecraft:ender_chest",
+      "at": [
+        2,
+        2
+      ],
+      "cost": 5,
+      "needs": [
+        "auto_sort"
+      ],
+      "perks": [
+        {
+          "tag": "storage.inventory"
+        }
+      ]
     }
   ]
 }

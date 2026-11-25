@@ -38,5 +38,12 @@
   "storage.tidy": "Sort the chests: merge stacks and put like with like",
   "storage.match": "Put in what storage already holds",
   "storage.restock": "Fill your stacks from storage",
-  "storage.capacity": "%1$s / %2$s slots, %3$s chests"
+  "storage.capacity": "%1$s / %2$s slots, %3$s chests",
+  "storage.minimum": "Keep at least %1$s (Ctrl + wheel)",
+  "storage.node.low_stock": "Running Low",
+  "storage.node.auto_sort": "Tidy On Close",
+  "storage.node.inventory": "Storage In Your Bag",
+  "skills.perk.storage.low_stock": "Pinned items keep a minimum; below it they turn red",
+  "skills.perk.storage.auto_sort": "Chests sort themselves when you close them after a change",
+  "skills.perk.storage.inventory": "Your inventory shows the chests within reach"
 }
