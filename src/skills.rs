@@ -1,7 +1,7 @@
 //! The comforts earned in the Skills tree Organization, with no code tie to Skills: an unlocked
 //! node gives the player a vanilla tag (`/tag`) that Storage reads (`storage.find`,
 //! `storage.quick_deposit`, `storage.low_stock`, `storage.auto_sort`, `storage.inventory`,
-//! `storage.network.<n>`), Skills earns tree experience from Storage's own
+//! `storage.peek`, `storage.furnace`, `storage.network.<n>`), Skills earns tree experience from Storage's own
 //! statistic, and the tree ships as a data file only Skills reads. Without Skills, the server's
 //! `all_comforts` setting opens them.
 use crate::payloads::{Comfort, Near, comfort};
@@ -9,6 +9,7 @@ use crate::server;
 #[allow(unused_imports)]
 use mod_api::prelude::*;
 use mod_api::{IPayloadContext, PlayerRef, Registrar, ServerHost, StatType};
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 /// The tag that lights the chests holding an item.
@@ -23,6 +24,10 @@ pub const AUTO_SORT: &str = "storage.auto_sort";
 pub const INVENTORY: &str = "storage.inventory";
 /// The tag that lets pinned entries keep a minimum, marked red below it.
 pub const LOW_STOCK: &str = "storage.low_stock";
+/// The tag that shows a shulker box's slots in its tooltip (sent to the client as `Perks`).
+pub const PEEK: &str = "storage.peek";
+/// The tag that lets furnaces touching a network take from it and put results back.
+pub const FURNACE: &str = "storage.furnace";
 /// The comforts a view reports, a bit each in this order (`View::comforts`).
 pub const COMFORTS: [&str; 5] = [FIND, EMPTY, AUTO_SORT, INVENTORY, LOW_STOCK];
 
@@ -77,6 +82,30 @@ pub fn moved(host: &mut dyn ServerHost, p: PlayerRef, n: u64) {
     if !p.award_stat(host, StatType::Custom, &format!("{}:{MOVED}", crate::MOD_ID), amount) {
         eprintln!("[storage] could not award {MOVED}");
     }
+}
+
+/// The `Perks` bits each player was last sent.
+static SENT: Mutex<BTreeMap<u128, i32>> = Mutex::new(BTreeMap::new());
+
+/// Tells each player's client which client-side comforts it has, when that changed (a send that
+/// fails, too early after joining, is tried again next time).
+pub fn send_perks(host: &mut dyn ServerHost) {
+    let Some(token) = crate::payloads::PERKS.get() else { return };
+    for p in host.players().server_players() {
+        let bits = if has(&*host, p, PEEK) { crate::payloads::perk::PEEK } else { 0 };
+        let sent = SENT.lock().unwrap_or_else(|e| e.into_inner()).get(&p.uuid()).copied();
+        if sent == Some(bits) {
+            continue;
+        }
+        if token.send(host, p, &crate::payloads::Perks { bits: mod_api::VarInt(bits) }).is_ok() {
+            SENT.lock().unwrap_or_else(|e| e.into_inner()).insert(p.uuid(), bits);
+        }
+    }
+}
+
+/// A player left: their next join is told again.
+pub fn forget(uuid: u128) {
+    SENT.lock().unwrap_or_else(|e| e.into_inner()).remove(&uuid);
 }
 
 struct Glow {
@@ -170,10 +199,10 @@ mod tests {
             .filter_map(|p| p["tag"].as_str().map(str::to_owned))
             .collect();
         for tag in &given {
-            let read = COMFORTS.contains(&tag.as_str()) || tag == CRAFT || tag.strip_prefix(NETWORK).is_some_and(|n| n.parse::<usize>().is_ok());
+            let read = COMFORTS.contains(&tag.as_str()) || [CRAFT, PEEK, FURNACE].contains(&tag.as_str()) || tag.strip_prefix(NETWORK).is_some_and(|n| n.parse::<usize>().is_ok());
             assert!(read, "the tree gives {tag}, which Storage never reads");
         }
-        for wanted in COMFORTS.into_iter().chain([CRAFT]) {
+        for wanted in COMFORTS.into_iter().chain([CRAFT, PEEK, FURNACE]) {
             assert!(given.iter().any(|t| t == wanted), "no node gives {wanted}");
         }
         assert!(given.iter().any(|t| network_of(std::slice::from_ref(t)) > NETWORK_START));

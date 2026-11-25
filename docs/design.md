@@ -74,7 +74,9 @@ leaves every item where it was.
 - A request names the entry by index and item id: a list that changed in between is refused,
   never the wrong item taken.
 - A double chest is read once (its left half), the walk still passing through both halves.
-- Only blocks in `storage:linked` join: furnaces, hoppers and machines are never read or emptied.
+- Only blocks in `storage:linked` join: furnaces, hoppers and machines are never read or emptied
+  as storage. With Furnaces From Chests, a furnace touching the network takes only tagged ore,
+  food and fuel into its own empty slots and gives back only its result slot.
 
 ## 7. Crafting from the chests (0.2)
 
@@ -217,6 +219,39 @@ Phase 3 as built and measured (2026-11-25, 50 chests, Horizon f037744):
   from a chest's screen, 7 + 9 cobblestone and a golden apple → apple, 16 cobblestone. Done in one
   transaction (taken out, put back in order; a stack that would not go back rolls it all back).
   Not measured: the button's place with the recipe book open on a narrow screen.
+
+### Phase 5: shulker peek and furnaces from chests — built in 0.7.0
+
+Two nodes in a fourth row of Organization: **Shulker Peek** (`storage.peek`, needs Running Low)
+and **Furnaces From Chests** (`storage.furnace`, needs Shulker Peek and Tidy On Close). Each can be
+turned off in the mod's settings (`shulker_peek` for the player, `furnace_feed` for the server).
+
+- **Shulker peek**: an item part on the item tag `minecraft:shulker_boxes` answers
+  `tooltip_component` (162 × 56 GUI pixels) and draws in `tooltip_component_draw`: 27 of the
+  game's `container/slot` sprites in 9 × 3, each item with its count, read from the box's
+  `minecraft:container` component. An empty box answers nothing, so its tooltip stays vanilla.
+  Tags live on the server only, so the server tells the client the comfort (`storage:perks`, a
+  bit set, sent when it changes and again after a failed send).
+- **Furnaces from chests**: a furnace, smoker or blast furnace touching a chest of a network
+  takes from the network when a slot is empty and puts results back, all through the game's
+  `ITEMS` slots (0 input, 1 fuel, 2 result), each move one transaction.
+  - What it cooks: only kinds in the item tag `storage:furnace_input` (raw metals, ores, raw
+    food, kelp) that this furnace's recipe type cooks, the most plentiful first, a stack at most.
+    A player's cobblestone, sand or logs are never cooked; packs extend the tag.
+  - What it burns: only kinds in `storage:furnace_fuel` (coal, charcoal, coal blocks, blaze rods,
+    dried kelp blocks), never one this furnace could cook (a pack adding logs to the fuel tag
+    still keeps them for charcoal), only when there is something to cook, as many as cook what
+    is in the input (64 raw iron: 8 coal), a stack at most.
+  - Results go back whole or stay (a full network leaves them in the furnace). Furnace experience
+    stays in the furnace until a player takes a result from it or breaks it, as vanilla keeps it.
+  - When: the tick after a furnace burns fuel, finishes an item or is emptied (`furnace_burn`,
+    `furnace_smelt`, `furnace_extract`), and once a second for new work. Furnaces are learned when
+    a player with the comfort opens them or a chest of their network, and when they burn or
+    finish; the list lives in memory (after a restart, opening the chest or the furnace, or the
+    furnace finishing an item, brings it back). It works while a player with the comfort is in
+    that dimension, reaching as far as the biggest network among them.
+- Measured in the game (2026-11-26): 3 raw iron and 16 coal in the far chest of two, logs and cobblestone in the near one: the furnace took 3 raw iron and 1 coal (one spare coal waits in its fuel slot), 3 iron ingots came back, logs and cobblestone untouched; without the tag nothing moved in 8 s, with it new raw gold went in within 2 s. A box with 4 kinds showed the 9 × 3 grid (`docs/shulker-peek.png`); an empty one kept the plain tooltip.
+- Reading players or blocks inside `furnace_smelt` hung the server (the world dropped about 75 s after joining): the hooks only note the position, the work runs on the next server tick.
 
 Not planned: grouping by Horizon-level "storage disks" or power (chores, against the owner's
 rules).

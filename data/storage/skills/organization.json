@@ -186,6 +186,43 @@
           "tag": "storage.inventory"
         }
       ]
+    },
+    {
+      "id": "peek",
+      "title": "storage.node.peek",
+      "icon": "minecraft:shulker_box",
+      "at": [
+        0,
+        3
+      ],
+      "cost": 2,
+      "needs": [
+        "low_stock"
+      ],
+      "perks": [
+        {
+          "tag": "storage.peek"
+        }
+      ]
+    },
+    {
+      "id": "furnace",
+      "title": "storage.node.furnace",
+      "icon": "minecraft:furnace",
+      "at": [
+        1,
+        3
+      ],
+      "cost": 4,
+      "needs": [
+        "peek",
+        "auto_sort"
+      ],
+      "perks": [
+        {
+          "tag": "storage.furnace"
+        }
+      ]
     }
   ]
 }

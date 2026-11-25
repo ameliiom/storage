@@ -7,10 +7,14 @@
 //! - **The panel** (`client.rs`): beside the chest's own screen, in the game's look.
 //! - **Stacks on the wire** (`nbtjson.rs`): an item with components, as typed JSON for the view.
 //! - **Comforts** (`skills.rs`): Find, quick deposit and a bigger network, earned in Skills' tree
-//!   Organization through Storage's own attributes and statistic.
+//!   Organization through tags and Storage's own statistic.
+//! - **Shulker peek** (`peek.rs`): a shulker box's slots in its tooltip.
+//! - **Furnaces from chests** (`furnace.rs`): furnaces touching a network cook from it.
 pub mod chain;
 pub mod craft;
+pub mod furnace;
 pub mod organize;
+pub mod peek;
 mod client;
 pub mod entries;
 pub mod nbtjson;
@@ -19,7 +23,7 @@ mod server;
 mod skills;
 
 use mod_api::{
-    ClientHost, ClientTickPreEvent, EntityJoinLevelEvent, EntityLeaveLevelEvent, Flow, Hooks, IPayloadContext, PayloadId, PlayerContainerCloseEvent,
+    ClientHost, ClientTickPreEvent, EntityJoinLevelEvent, EntityLeaveLevelEvent, Flow, FurnaceBurnEvent, FurnaceExtractEvent, FurnaceSmeltEvent, Hooks, IPayloadContext, PayloadId, PlayerContainerCloseEvent,
     PlayerContainerOpenEvent, PlayerLoggedOutEvent, PlayerRecipeBookClickEvent, RecipeSourcesEvent, Registrar, RegistrationContext, ScreenCharTypedPreEvent,
     ScreenClosingEvent, ScreenKeyPressedPreEvent, ScreenMouseButtonPressedPreEvent, ScreenMouseScrolledPreEvent,
     ScreenRenderBackgroundEvent, ScreenRenderPostEvent, ServerHost, ServerTickEvent, ServerTickPhase, SettingSpec,
@@ -33,10 +37,19 @@ pub(crate) const MOD_ID: &str = "storage";
 pub(crate) mod setting {
     /// Opens every comfort for a world that doesn't use Skills.
     pub const ALL_COMFORTS: &str = "all_comforts";
+    /// A player's own switch for Shulker peek (client).
+    pub const SHULKER_PEEK: &str = "shulker_peek";
+    /// The server's switch for Furnaces from chests.
+    pub const FURNACE_FEED: &str = "furnace_feed";
 }
 
 fn on_view(view: payloads::View, _: &mut dyn IPayloadContext) -> Result<(), String> {
     client::viewed(view);
+    Ok(())
+}
+
+fn on_perks(perks: payloads::Perks, _: &mut dyn IPayloadContext) -> Result<(), String> {
+    peek::earned(perks.bits.0 & payloads::perk::PEEK != 0);
     Ok(())
 }
 
@@ -47,12 +60,16 @@ pub struct Mod;
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
         let _ = r.register_setting(SettingSpec::toggle(setting::ALL_COMFORTS, "storage.config.all_comforts", false));
+        let _ = r.register_setting(SettingSpec::toggle(setting::SHULKER_PEEK, "storage.config.shulker_peek", true));
+        let _ = r.register_setting(SettingSpec::toggle(setting::FURNACE_FEED, "storage.config.furnace_feed", true));
+        r.attach_item_part_tag("minecraft:shulker_boxes", "storage:peek", std::sync::Arc::new(peek::Peek));
         skills::register(r);
         let mut handlers = r.payload_handlers();
         let mut view = handlers.registrar("1").optional();
         let _ = payloads::VIEW.set(view.play_to_client_typed(PayloadId("storage:view".into()), on_view));
         let _ = payloads::CLICK.set(view.play_to_server_typed(PayloadId("storage:click".into()), server::click));
         let _ = payloads::COMFORT.set(view.play_to_server_typed(PayloadId("storage:comfort".into()), skills::comfort));
+        let _ = payloads::PERKS.set(view.play_to_client_typed(PayloadId("storage:perks".into()), on_perks));
         let _ = payloads::NEAR.set(view.play_to_server_typed(PayloadId("storage:near".into()), skills::near));
     }
 
@@ -90,6 +107,21 @@ impl Hooks for Mod {
 
     fn player_logged_out(&self, _: &mut dyn ServerHost, event: &mut PlayerLoggedOutEvent<'_>) {
         server::forget(event.player);
+        skills::forget(event.player);
+    }
+
+    /// Furnaces from chests: a furnace that burned fuel, finished an item or was emptied is
+    /// looked at on the next tick.
+    fn furnace_burn(&self, _: &mut dyn ServerHost, event: &mut FurnaceBurnEvent<'_>) {
+        furnace::woke(event.pos);
+    }
+
+    fn furnace_smelt(&self, _: &mut dyn ServerHost, event: &mut FurnaceSmeltEvent<'_>) {
+        furnace::woke(event.pos);
+    }
+
+    fn furnace_extract(&self, _: &mut dyn ServerHost, event: &mut FurnaceExtractEvent<'_>) {
+        furnace::woke(event.pos);
     }
 
     fn server_tick(&self, host: &mut dyn ServerHost, event: &mut ServerTickEvent<'_>) {

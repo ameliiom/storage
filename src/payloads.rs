@@ -83,7 +83,20 @@ pub struct Near {
     pub open: bool,
 }
 
+/// Server → client: the client-side comforts this player has earned (`perk` bits), sent when
+/// they change.
+#[derive(PayloadCodec, Clone, Debug)]
+pub struct Perks {
+    pub bits: VarInt,
+}
+
+pub mod perk {
+    /// Shulker peek: a shulker box's slots in its tooltip.
+    pub const PEEK: i32 = 1;
+}
+
 pub static VIEW: OnceLock<ToClient<View>> = OnceLock::new();
+pub static PERKS: OnceLock<ToClient<Perks>> = OnceLock::new();
 pub static NEAR: OnceLock<ToServer<Near>> = OnceLock::new();
 pub static CLICK: OnceLock<ToServer<Click>> = OnceLock::new();
 pub static COMFORT: OnceLock<ToServer<Comfort>> = OnceLock::new();

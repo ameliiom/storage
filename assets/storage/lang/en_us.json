@@ -46,5 +46,11 @@
   "skills.perk.storage.low_stock": "Pinned items keep a minimum; below it they turn red",
   "skills.perk.storage.auto_sort": "Chests sort themselves when you close them after a change",
   "skills.perk.storage.inventory": "Your inventory shows the chests within reach",
-  "storage.sort_bag": "Sort your bag"
+  "storage.sort_bag": "Sort your bag",
+  "storage.node.peek": "Shulker Peek",
+  "skills.perk.storage.peek": "Hover a shulker box: its 27 slots show in the tooltip",
+  "storage.node.furnace": "Furnaces From Chests",
+  "skills.perk.storage.furnace": "A furnace touching your chests takes ore and fuel from them and puts results back",
+  "storage.config.shulker_peek": "Shulker box contents in the tooltip",
+  "storage.config.furnace_feed": "Furnaces take from the chests they touch"
 }

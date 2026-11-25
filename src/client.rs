@@ -440,7 +440,7 @@ fn count(draw: &mut dyn DrawContext, n: u64, [x, y]: [f32; 2]) {
     ]);
 }
 
-fn sprite(draw: &mut dyn DrawContext, name: &str, [x, y, w, h]: Rect) {
+pub(crate) fn sprite(draw: &mut dyn DrawContext, name: &str, [x, y, w, h]: Rect) {
     let _ = draw.gui_paint(&[GuiDraw::Sprite {
         sprite: name.to_owned().into(),
         x: x as i32,

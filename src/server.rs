@@ -106,7 +106,7 @@ fn held(host: &mut dyn ServerHost, level: LevelRef, pos: Pos) -> Vec<(ItemResour
 
 /// The network seen from `pos`: from it when it is a linked container (a chest), else from every
 /// linked container touching it (a crafting table or a furnace beside chests), at most `cap`.
-fn walk(host: &dyn Host, level: LevelRef, pos: Pos, cap: usize) -> Vec<Pos> {
+pub(crate) fn walk(host: &dyn Host, level: LevelRef, pos: Pos, cap: usize) -> Vec<Pos> {
     let at = |p| block_at(host, level, p);
     if at(pos) != Block::Other {
         return chain::walk(pos, cap, at);
@@ -132,8 +132,8 @@ fn walk(host: &dyn Host, level: LevelRef, pos: Pos, cap: usize) -> Vec<Pos> {
 /// Reads the network: the containers in walk order, and the merged entries.
 fn read(host: &mut dyn ServerHost, level: LevelRef, chest: Pos, cap: usize) -> (Vec<Pos>, Vec<Entry<ItemResource>>) {
     let found = walk(&*host, level, chest, cap);
-    let held: Vec<_> = found.iter().map(|&pos| held(host, level, pos)).collect();
-    (found, entries::merge(held))
+    let entries = entries_of(host, level, &found);
+    (found, entries)
 }
 
 fn player(host: &dyn ServerHost, uuid: u128) -> Option<PlayerRef> {
@@ -150,8 +150,39 @@ fn session(host: &dyn ServerHost, uuid: u128) -> Option<(LevelRef, Pos, usize)> 
 /// the rest, nearest first, as hoppers fill. How much went in.
 fn insert(host: &mut dyn ServerHost, tx: &Transaction, uuid: u128, kind: &ItemResource, amount: u64) -> u64 {
     let Some((level, chest, cap)) = session(&*host, uuid) else { return 0 };
-    let (found, entries) = read(host, level, chest, cap);
-    let labels = labels(host, level, &found);
+    let found = walk(&*host, level, chest, cap);
+    put_into(host, tx, level, &found, kind, amount)
+}
+
+/// The merged entries of the containers `found`, in their order.
+pub(crate) fn entries_of(host: &mut dyn ServerHost, level: LevelRef, found: &[Pos]) -> Vec<Entry<ItemResource>> {
+    let held: Vec<_> = found.iter().map(|&pos| held(host, level, pos)).collect();
+    entries::merge(held)
+}
+
+/// Takes up to `amount` of entry `entry` (of `entries_of(found)`) out of the containers `found` in
+/// `tx`, nearest first. How much came out.
+pub(crate) fn take_from(
+    host: &mut dyn ServerHost,
+    tx: &Transaction,
+    level: LevelRef,
+    found: &[Pos],
+    entry: &Entry<ItemResource>,
+    amount: u64,
+) -> u64 {
+    let mut moved = 0;
+    for (c, n) in entries::split_take(&entry.holders, amount) {
+        if let Some(storage) = level.capability(host, &STORAGE, found[c], None) {
+            moved += storage.extract(host, tx, &entry.kind, n);
+        }
+    }
+    moved
+}
+
+/// Puts up to `amount` of `kind` into the containers `found` in `tx`, as `insert` orders them.
+pub(crate) fn put_into(host: &mut dyn ServerHost, tx: &Transaction, level: LevelRef, found: &[Pos], kind: &ItemResource, amount: u64) -> u64 {
+    let entries = entries_of(host, level, found);
+    let labels = labels(host, level, found);
     let holding: Vec<usize> =
         entries.iter().find(|e| &e.kind == kind).map(|e| e.holders.iter().map(|h| h.0).collect()).unwrap_or_default();
     // Its labelled chests first, then where it already is, then the rest in label order.
@@ -243,7 +274,7 @@ fn hide(host: &mut dyn ServerHost, uuid: u128) {
 }
 
 /// Every open chest: after a change one player made, the others see it at once.
-fn refresh_all(host: &mut dyn ServerHost) {
+pub(crate) fn refresh_all(host: &mut dyn ServerHost) {
     for uuid in with(|s| s.sessions.keys().copied().collect::<Vec<_>>()) {
         refresh(host, uuid);
     }
@@ -256,6 +287,13 @@ pub fn opened(host: &mut dyn ServerHost, uuid: u128, dimension: &str, pos: Pos) 
         return;
     }
     start(host, uuid, dimension, pos, false);
+    // Furnaces from chests: the furnaces of this network are remembered.
+    if let Some(p) = player(&*host, uuid)
+        && skills::has(&*host, p, skills::FURNACE)
+    {
+        let found = walk(&*host, level, pos, skills::network(&*host, p));
+        crate::furnace::look_around(&*host, dimension, level, pos, &found);
+    }
 }
 
 fn start(host: &mut dyn ServerHost, uuid: u128, dimension: &str, pos: Pos, near: bool) {
@@ -344,6 +382,10 @@ pub fn tick(host: &mut dyn ServerHost) {
         (s.ticks, s.ticks.is_multiple_of(REFRESH) && !s.sessions.is_empty())
     });
     skills::tick(host, ticks);
+    crate::furnace::tick(host);
+    if ticks.is_multiple_of(REFRESH) {
+        skills::send_perks(host);
+    }
     if due {
         for uuid in with(|s| s.sessions.keys().copied().collect::<Vec<_>>()) {
             if too_far(&*host, uuid) {
@@ -411,15 +453,9 @@ fn pull(
     let Some((level, chest, cap)) = session(&*host, p.uuid()) else { return };
     let (found, entries) = read(host, level, chest, cap);
     let Some(entry) = entries.iter().find(|e| &e.kind == kind) else { return };
-    let plan = entries::split_take(&entry.holders, amount);
     let mut give = Some(give);
     let moved = host.transaction(|host, tx| {
-        let mut moved = 0u64;
-        for &(c, n) in &plan {
-            if let Some(storage) = level.capability(host, &STORAGE, found[c], None) {
-                moved += storage.extract(host, tx, kind, n);
-            }
-        }
+        let moved = take_from(host, tx, level, &found, entry, amount);
         if moved == 0 {
             return Ok(0);
         }
@@ -620,15 +656,19 @@ pub fn recipe_clicked(host: &mut dyn ServerHost, uuid: u128, recipe: &str, all: 
 fn category(host: &dyn ServerHost, kind: &ItemResource) -> Category {
     let has = |id: &str| ComponentId::new(id).is_some_and(|c| kind.value(host, &c).is_some());
     let id = kind.item().id(host);
-    let tagged = |tag: &str| {
-        host.registry_entry("minecraft:item", &id).and_then(|e| host.registry_entry_in_tag(&e, tag)).unwrap_or(false)
-    };
+    let tagged = |tag: &str| item_tagged(host, kind, tag);
     organize::category(Traits {
         gear: has("minecraft:max_damage") || has("minecraft:tool") || has("minecraft:weapon") || has("minecraft:equippable"),
         food: has("minecraft:food"),
         redstone: tagged("storage:category/redstone"),
         block: host.registry_entry("minecraft:block", &id).is_some(),
     })
+}
+
+/// Whether the kind's item is in item tag `tag`.
+pub(crate) fn item_tagged(host: &dyn ServerHost, kind: &ItemResource, tag: &str) -> bool {
+    let id = kind.item().id(host);
+    host.registry_entry("minecraft:item", &id).and_then(|e| host.registry_entry_in_tag(&e, tag)).unwrap_or(false)
 }
 
 /// Each container's label: the item in an item frame hanging on it.

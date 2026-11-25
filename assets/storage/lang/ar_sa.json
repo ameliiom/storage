@@ -46,5 +46,11 @@
   "skills.perk.storage.low_stock": "الأغراض المثبتة لها حد أدنى، وتحته تصير حمرا",
   "skills.perk.storage.auto_sort": "الصناديق تترتب بنفسها لما تسكرها بعد ما تغير شي",
   "skills.perk.storage.inventory": "شنطتك تعرض الصناديق اللي حولك",
-  "storage.sort_bag": "رتّب شنطتك"
+  "storage.sort_bag": "رتّب شنطتك",
+  "storage.node.peek": "نظرة في الشلكر",
+  "skills.perk.storage.peek": "مرّر على صندوق الشلكر: تشوف خاناته الـ27 بالتلميح",
+  "storage.node.furnace": "أفران من الصناديق",
+  "skills.perk.storage.furnace": "الفرن اللي لازق بصناديقك ياخذ الخام والوقود منها ويرجّع الناتج",
+  "storage.config.shulker_peek": "محتوى صندوق الشلكر بالتلميح",
+  "storage.config.furnace_feed": "الأفران تاخذ من الصناديق اللي لازقة فيها"
 }

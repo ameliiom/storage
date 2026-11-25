@@ -30,8 +30,10 @@ With [Skills](https://github.com/ameliiom/skills) 0.2 or later, a sixth tree, **
 - **Running Low**: a pinned item keeps a minimum (Ctrl + wheel over it, a stack at a time); below it the entry turns red, and an item you ran out of still shows, empty and red.
 - **Tidy On Close**: when you close a chest after something moved, the chests sort themselves (not while a friend has them open).
 - **Storage In Your Bag**: open your own inventory within reach of your chests (5 blocks) and the same panel shows beside it; walk away and it goes.
+- **Shulker Peek**: hover a shulker box anywhere and its 27 slots show in the tooltip, items and counts in the game's own slots.
+- **Furnaces From Chests**: a furnace, smoker or blast furnace touching your chests takes ore, raw food and fuel from them and puts the results back. Only ores, raw metals and raw food are cooked (item tag `storage:furnace_input`) and only coal, charcoal, coal blocks, blaze rods and dried kelp blocks are burned (`storage:furnace_fuel`); your cobblestone, sand and logs are never touched.
 
-Without Skills, the server setting **All comforts without Skills** opens them all.
+Each comfort can be turned off in the mod's settings. Without Skills, the server setting **All comforts without Skills** opens them all.
 
 ## Install
 1. Copy `storage.hmod` into `%APPDATA%\horizon\horizon-native-mods\`.
