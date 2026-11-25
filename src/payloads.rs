@@ -21,6 +21,10 @@ pub struct View {
     pub categories: Vec<u8>,
     /// Slots used, then slots in all, over the joined containers.
     pub slots: Vec<VarInt>,
+    /// Beside `ids`: an entry's whole stack as typed JSON (`nbtjson`) when it has components (an
+    /// enchanted or worn tool, a potion), so the client draws and describes the real thing; else
+    /// empty, and the plain item is meant.
+    pub stacks: Vec<String>,
 }
 
 /// Client → server: a click on the storage panel, as a chest's slot takes one. On entry `index`
@@ -33,6 +37,22 @@ pub struct Click {
     pub id: String,
     pub button: VarInt,
     pub shift: bool,
+    /// What the gesture asks (`action`): a plain click, or one of the quick moves.
+    pub action: VarInt,
+}
+
+pub mod action {
+    /// A click as described on `Click`.
+    pub const CLICK: i32 = 0;
+    /// Shift + wheel down: one of the entry into the inventory.
+    pub const ONE_OUT: i32 = 1;
+    /// Shift + wheel up: one of the entry from the inventory back in.
+    pub const ONE_IN: i32 = 2;
+    /// Double-click: as much of the entry as the inventory holds.
+    pub const ALL: i32 = 3;
+    /// Q: one of the entry dropped in front of the player; Ctrl+Q a stack.
+    pub const DROP: i32 = 4;
+    pub const DROP_STACK: i32 = 5;
 }
 
 /// Client → server: an Organization comfort. `FIND` lights the chests holding entry `index`;

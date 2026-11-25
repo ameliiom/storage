@@ -4,9 +4,14 @@ For [Horizon](https://playhorizon.dev) (Minecraft: Java Edition 26.3 in Rust). O
 
 ## How it plays
 - **Open any chest, barrel or shulker box** joined to others (touching, or touching one that does). The panel sits beside the chest screen.
-- **Click** an entry: a stack to the cursor (right-click: half). **Shift-click**: straight into your inventory.
+- **Click** an entry: a stack to the cursor (right-click: half). **Shift-click**: straight into your inventory. **Double-click**: as much as your inventory holds.
+- **Shift + wheel** over an entry: one at a time (down takes one, up puts one back). **Q** drops one in front of you, **Ctrl+Q** a stack.
 - **Put in**: click the list with something on the cursor (right-click: one).
-- **Search** in any language, `@mod` for a mod's items, `#tag` for an item tag.
+- **Search** in any language, `@mod` for a mod's items, `#tag` for an item tag, `$text` inside tooltips (`$sharp` finds Sharpness swords, in any language). **Ctrl+F** jumps to the search box; the **x** clears it.
+- Items show as they are: enchantment glint, durability bar, the game's own tooltip.
+- Worn and enchanted copies of one item are **grouped** under one entry (marked +); click it to see each.
+- **Pin** an entry with a middle-click: pinned items stay first, remembered between games.
+- The panel uses the **whole screen height** beside the chest.
 - **Tabs** on the panel's side: everything, tools and armour, food, redstone, materials, blocks, other mods.
 - **Sort** by count, name, mod, id or what changed last (right-click the sort button to reverse). The list holds still while you shift-click.
 - **Sort chests** (brush): every joined chest is compacted and like goes with like. **Label** a chest by hanging an item frame on it: that item (and things like it) goes there first.

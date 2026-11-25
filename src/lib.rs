@@ -5,6 +5,7 @@
 //! - **The merged view** (`entries.rs`): one entry per kind, search, sort, splitting a take.
 //! - **The server** (`server.rs`): a session per open chest, takes and puts in one transaction.
 //! - **The panel** (`client.rs`): beside the chest's own screen, in the game's look.
+//! - **Stacks on the wire** (`nbtjson.rs`): an item with components, as typed JSON for the view.
 //! - **Comforts** (`skills.rs`): Find, quick deposit and a bigger network, earned in Skills' tree
 //!   Organization through Storage's own attributes and statistic.
 pub mod chain;
@@ -12,6 +13,7 @@ pub mod craft;
 pub mod organize;
 mod client;
 pub mod entries;
+pub mod nbtjson;
 pub mod payloads;
 mod server;
 mod skills;
@@ -116,7 +118,7 @@ impl Hooks for Mod {
     }
 
     fn screen_mouse_scrolled_pre(&self, _: &dyn ClientHost, event: &mut ScreenMouseScrolledPreEvent<'_>) -> Flow {
-        if client::scroll(event.screen, event.scroll[1]) { Flow::Cancel } else { Flow::Continue }
+        if client::scroll(event.screen, event.scroll[1], event.modifiers) { Flow::Cancel } else { Flow::Continue }
     }
 
     fn screen_key_pressed_pre(&self, host: &dyn ClientHost, event: &mut ScreenKeyPressedPreEvent<'_>) -> Flow {

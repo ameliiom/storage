@@ -119,7 +119,7 @@ full operator toolkit, 0.2 is a bare list. What is missing, by how much it chang
 | 5 | Sort is thin | sort by count, name, mod, **id, recently changed**, with a **direction** toggle; the order freezes while you shift-click so entries don't jump | client sort |
 | 6 | No sense of space | **Capacity bar**: slots used / total and the number of chests, coloured as it fills | the server already reads every slot |
 
-### Phase 2: speed
+### Phase 2: speed — built in 0.4.0
 
 | # | Gap | What it becomes |
 |---|---|---|
@@ -154,6 +154,28 @@ Phase 1 as built and measured (2026-11-25, 50 chests, Horizon f037744):
 - **Capacity bar**: green, amber past 75%, red past 90%; its tooltip gives slots and chests.
 - Buttons wrap to two rows on a narrow panel; a test checks every control stays inside the panel
   at every width.
+
+Phase 2 as built and measured (2026-11-25, 50 chests, Horizon f037744):
+
+- **Real stacks**: the view carries each kind with components (enchanted, worn, potions) as typed
+  NBT in JSON (`nbtjson.rs`, a string per entry, plain items send nothing); the client rebuilds the
+  stack, draws it with glint and durability bar and shows the game's own tooltip.
+- **Groups**: 4 kinds of diamond sword (plain, worn, Sharpness III, Unbreaking) showed as one
+  entry with a + mark; a click opened them. A search that leaves one variant shows it alone.
+- **Tooltip search**: `$حدة` (the Arabic tooltip) and `$unbreak` (the enchantment id in the stack's
+  data) both found the enchanted swords with the game in Arabic.
+- **Gestures**: shift + wheel down took one mossy cobblestone, up put one back; Q dropped the
+  Sharpness sword in front of the player, Ctrl+Q a stack of 64 apples; double-click took all 295
+  bones into the inventory (4 stacks and 39); Ctrl+F focused the search box; the x cleared it.
+- **Into the inventory** goes slot by slot (stacks of that kind first, then empty slots, hotbar
+  first), each slot asked for no more than its room: `PlayerHand` holds only the hand's slot, and a
+  slot asked for more than a stack takes nothing (168 at once rolled back).
+- **Pins** live in `config/storage-pins.txt` (item ids, one a line); a pinned apple came first with
+  a gold corner after a restart. The middle-click itself was not driven by the test tool (it has
+  no middle-click in screens).
+- **Panel height**: the whole screen height minus 4 pixels, beside the chest; a test checks every
+  control stays inside at 6 widths.
+- A double-click needs both presses within 300 ms; two scripted clicks 270 ms apart were caught.
 
 Not planned: grouping by Horizon-level "storage disks" or power (chores, against the owner's
 rules).

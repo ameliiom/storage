@@ -1,12 +1,11 @@
 [package]
 name = "mod-storage"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 
 [dependencies]
 # The pinned SDK's API crate, fetched into .horizon/sdk/ by any `cargo horizon-mod` command.
 horizon-mod-api = { path = ".horizon/sdk/api/crates/horizon-mod-api" }
-
-[dev-dependencies]
-# The tree-file test reads JSON; the same version the Skills lock already pins.
+# Stacks with components cross to the client as typed JSON (nbtjson.rs); the version the engine lock pins.
 serde_json = "1.0.151"
+

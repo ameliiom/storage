@@ -1,7 +1,7 @@
 //! The merged view: every kind of item across the network as one entry with its total, and which
 //! containers hold it. Generic over the kind (`K`: the server's item resource, or a plain key in
 //! tests), so merging, searching, sorting and splitting a take are all tested here without a game.
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// One kind of item across the network.
 #[derive(Clone, Debug, PartialEq)]
@@ -71,10 +71,14 @@ pub struct Shown<'a> {
     pub total: u64,
     /// When its total last changed (a counter the client keeps; larger is later).
     pub changed: u64,
+    /// Its tooltip in lower case (enchantments, effects, lore), read only by a `$` word; empty
+    /// until the client fills it.
+    pub tip: &'a str,
 }
 
 /// The search box's meaning: words that must all be in the name (or id), `@mod` for a
-/// namespace, `#tag` for a tag (`has_tag` answers it). Case and spaces around are ignored.
+/// namespace, `#tag` for a tag (`has_tag` answers it), `$text` for words in the tooltip
+/// (`$sharp` finds Sharpness). Case and spaces around are ignored.
 pub fn matches(query: &str, shown: &Shown, has_tag: impl Fn(&str) -> bool) -> bool {
     let name = shown.name.to_lowercase();
     let id = shown.id.to_lowercase();
@@ -85,6 +89,8 @@ pub fn matches(query: &str, shown: &Shown, has_tag: impl Fn(&str) -> bool) -> bo
             namespace.starts_with(m)
         } else if let Some(t) = word.strip_prefix('#') {
             !t.is_empty() && has_tag(t)
+        } else if let Some(t) = word.strip_prefix('$') {
+            shown.tip.contains(t)
         } else {
             name.contains(&word) || id.contains(&word)
         }
@@ -111,6 +117,36 @@ pub fn order(shown: &[Shown], sort: Sort, reverse: bool) -> Vec<usize> {
         if reverse { by.reverse() } else { by }
     });
     idx
+}
+
+/// Groups variants of one item (a worn sword and an enchanted one share the id): of `shown`
+/// (indices into `ids`, in order), each id with two or more kinds keeps only its first, at its
+/// place, unless the id is `open`. Also gives each group head's total and how many kinds it holds.
+pub fn group(ids: &[String], totals: &[u64], shown: Vec<usize>, open: &HashSet<String>) -> (Vec<usize>, HashMap<usize, (u64, usize)>) {
+    let mut sums: HashMap<&str, (u64, usize)> = HashMap::new();
+    for &i in &shown {
+        let s = sums.entry(ids[i].as_str()).or_default();
+        s.0 += totals[i];
+        s.1 += 1;
+    }
+    let mut heads = HashMap::new();
+    let mut seen = HashSet::new();
+    let kept = shown
+        .into_iter()
+        .filter(|&i| {
+            let id = ids[i].as_str();
+            let (sum, kinds) = sums[id];
+            if kinds < 2 || open.contains(id) {
+                return true;
+            }
+            let first = seen.insert(id);
+            if first {
+                heads.insert(i, (sum, kinds));
+            }
+            first
+        })
+        .collect();
+    (kept, heads)
 }
 
 /// A total as an item count shows it: up to 999 as is, then `1.2k`, `15k`, `1.2M`, Latin digits.
@@ -167,7 +203,7 @@ mod tests {
 
     #[test]
     fn search_reads_names_ids_mods_and_tags_in_any_language() {
-        let shown = Shown { name: "حجر مصقول", id: "minecraft:polished_andesite", total: 3, changed: 0 };
+        let shown = Shown { name: "حجر مصقول", id: "minecraft:polished_andesite", total: 3, changed: 0, tip: "polished andesite\nsharpness iii" };
         let no_tag = |_: &str| false;
         assert!(matches("", &shown, no_tag));
         assert!(matches("حجر", &shown, no_tag));
@@ -177,14 +213,17 @@ mod tests {
         assert!(matches("#stone", &shown, |t| t == "stone"));
         assert!(!matches("#", &shown, |_| true));
         assert!(!matches("حجر خشب", &shown, no_tag));
+        assert!(matches("$sharp", &shown, no_tag));
+        assert!(matches("$SHARPNESS حجر", &shown, no_tag));
+        assert!(!matches("$fire", &shown, no_tag));
     }
 
     #[test]
     fn sorting_is_stable_and_follows_the_choice() {
         let shown = [
-            Shown { name: "Dirt", id: "minecraft:dirt", total: 5, changed: 2 },
-            Shown { name: "apple", id: "minecraft:apple", total: 5, changed: 7 },
-            Shown { name: "Gear", id: "create:gear", total: 9, changed: 1 },
+            Shown { name: "Dirt", id: "minecraft:dirt", total: 5, changed: 2, tip: "" },
+            Shown { name: "apple", id: "minecraft:apple", total: 5, changed: 7, tip: "" },
+            Shown { name: "Gear", id: "create:gear", total: 9, changed: 1, tip: "" },
         ];
         assert_eq!(order(&shown, Sort::Count, false), vec![2, 1, 0]);
         assert_eq!(order(&shown, Sort::Count, true), vec![0, 1, 2]);
@@ -269,5 +308,21 @@ mod tests {
             }
             assert_eq!(chests.iter().sum::<u64>() + received[0] + received[1], start);
         }
+    }
+
+    #[test]
+    fn variants_of_one_item_show_as_one_group_until_opened() {
+        let ids: Vec<String> = ["sword", "dirt", "sword", "sword", "apple"].map(String::from).to_vec();
+        let totals = [1, 40, 1, 2, 3];
+        let (kept, heads) = group(&ids, &totals, vec![1, 2, 0, 4, 3], &HashSet::new());
+        assert_eq!(kept, vec![1, 2, 4]);
+        assert_eq!(heads, HashMap::from([(2, (4, 3))]));
+        let open = HashSet::from(["sword".to_owned()]);
+        let (kept, heads) = group(&ids, &totals, vec![1, 2, 0, 4, 3], &open);
+        assert_eq!(kept, vec![1, 2, 0, 4, 3]);
+        assert!(heads.is_empty());
+        // A search that leaves one variant shows it alone, not as a group.
+        let (kept, heads) = group(&ids, &totals, vec![3, 1], &HashSet::new());
+        assert_eq!((kept, heads.len()), (vec![3, 1], 0));
     }
 }

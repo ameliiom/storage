@@ -8,11 +8,12 @@ use crate::chain::{self, Block, Pos};
 use crate::entries::{self, Entry};
 use crate::craft;
 use crate::organize::{self, Category, Label, Traits};
-use crate::payloads::{self, Click, View};
+use crate::nbtjson;
+use crate::payloads::{self, Click, View, action};
 use crate::skills;
 use mod_api::{
-    BlockMetadata, ComponentId, Hand, Host, HostBlockStates, HostTransaction, IPayloadContext, ITEMS, ItemPlace, ItemResource,
-    LevelRef, PlayerRef, STORAGE, ServerHost, StoragePage, Tag, Transaction, VarInt, VarLong,
+    BlockMetadata, ComponentId, Compound, Host, HostBlockStates, HostTransaction, IPayloadContext, ITEMS, ItemPlace, ItemResource,
+    ItemStack, LevelRef, PlayerRef, STORAGE, ServerHost, StoragePage, Tag, Transaction, VarInt, VarLong,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
@@ -182,6 +183,7 @@ fn refresh(host: &mut dyn ServerHost, uuid: u128) {
             let (used, total) = usage(host, level, &found);
             vec![VarInt(used as i32), VarInt(total as i32)]
         },
+        stacks: shown.iter().map(|e| stack_json(&*host, &e.kind)).collect(),
     };
     with(|s| {
         if let Some(x) = s.sessions.get_mut(&uuid) {
@@ -192,6 +194,17 @@ fn refresh(host: &mut dyn ServerHost, uuid: u128) {
     if let Err(e) = token.send(host, p, &view) {
         eprintln!("[storage] sending the view: {e:?}");
     }
+}
+
+/// The kind's stack as JSON when it has components (a payload string holds at most 4096
+/// bytes: a bigger one, a long written book, shows as the plain item).
+fn stack_json(host: &dyn Host, kind: &ItemResource) -> String {
+    let Some(nbt) = kind.as_stack().to_nbt(host) else { return String::new() };
+    if !nbt.contains_key(&"components".into()) {
+        return String::new();
+    }
+    let text = nbtjson::write(&nbt);
+    if text.len() <= 4000 { text } else { String::new() }
 }
 
 /// Every open chest: after a change one player made, the others see it at once.
@@ -239,10 +252,54 @@ fn seen(host: &dyn ServerHost, uuid: u128, index: i32, id: &str) -> Option<ItemR
 /// Takes up to `amount` of `kind` to `place` (the cursor, or the inventory), nearest containers
 /// first, in one transaction: all of it reaches the player, or nothing moves.
 fn take(host: &mut dyn ServerHost, p: PlayerRef, place: ItemPlace, kind: &ItemResource, amount: u64) {
+    pull(host, p, kind, amount, |host, tx, moved| u64::from(place.insert(host, tx, kind, moved as u32)) == moved);
+}
+
+/// Takes up to `amount` of `kind` into the main inventory (`PlayerHand` holds only the hand's
+/// slot: 168 cobblestone to it rolled back).
+fn take_to_inventory(host: &mut dyn ServerHost, p: PlayerRef, kind: &ItemResource, amount: u64) {
+    pull(host, p, kind, amount, |host, tx, moved| to_inventory(host, tx, p, kind, moved) == moved);
+}
+
+/// Puts up to `n` of `kind` into the main inventory in `tx` as a pickup fills it: onto stacks of
+/// it first, then into empty slots, hotbar first. How many went in. Each slot is asked for no
+/// more than it has room for (a slot asked for more than a stack takes nothing).
+fn to_inventory(host: &mut dyn ServerHost, tx: &Transaction, p: PlayerRef, kind: &ItemResource, n: u64) -> u64 {
+    let max = u64::from(host.max_stack_size(kind.item()).unwrap_or(64));
+    let slots = p.inventory_slots(&*host).unwrap_or_default();
+    let held: Vec<(u32, Option<u64>)> = slots
+        .iter()
+        .filter(|(s, st)| *s < 36 && st.count() > 0)
+        .map(|(s, st)| (*s, kind.matches(st).then(|| max.saturating_sub(u64::from(st.count())))))
+        .collect();
+    let same = held.iter().filter_map(|&(s, room)| Some((s, room?)));
+    let empty = (0..36u32).filter(|s| !held.iter().any(|h| h.0 == *s)).map(|s| (s, max));
+    let order: Vec<(u32, u64)> = same.chain(empty).filter(|&(_, room)| room > 0).collect();
+    let mut left = n;
+    for (slot, room) in order {
+        if left == 0 {
+            break;
+        }
+        let place = ItemPlace::PlayerSlot { player: p.uuid(), slot: slot as i32 };
+        left -= u64::from(place.insert(host, tx, kind, left.min(room) as u32)).min(left);
+    }
+    n - left
+}
+
+/// Takes up to `amount` of `kind` out of the network, nearest first, and hands what came out to
+/// `give`, all in one transaction: when `give` can't place all of it, nothing moves.
+fn pull(
+    host: &mut dyn ServerHost,
+    p: PlayerRef,
+    kind: &ItemResource,
+    amount: u64,
+    give: impl FnOnce(&mut dyn ServerHost, &Transaction, u64) -> bool,
+) {
     let Some((level, chest, cap)) = session(&*host, p.uuid()) else { return };
     let (found, entries) = read(host, level, chest, cap);
     let Some(entry) = entries.iter().find(|e| &e.kind == kind) else { return };
     let plan = entries::split_take(&entry.holders, amount);
+    let mut give = Some(give);
     let moved = host.transaction(|host, tx| {
         let mut moved = 0u64;
         for &(c, n) in &plan {
@@ -250,15 +307,40 @@ fn take(host: &mut dyn ServerHost, p: PlayerRef, place: ItemPlace, kind: &ItemRe
                 moved += storage.extract(host, tx, kind, n);
             }
         }
-        let given = u64::from(place.insert(host, tx, kind, moved as u32));
-        if given == moved { Ok(moved) } else { Err(moved - given) }
+        if moved == 0 {
+            return Ok(0);
+        }
+        if give.take().is_some_and(|give| give(host, tx, moved)) { Ok(moved) } else { Err(moved) }
     });
     match moved {
         Ok(n) if n > 0 => skills::moved(host, p, n),
-        Err(short) => eprintln!("[storage] a take was rolled back ({short} would not fit)"),
+        Err(n) => eprintln!("[storage] a take of {n} was rolled back (it had nowhere to go)"),
         _ => {}
     }
     refresh_all(host);
+}
+
+/// How many of `kind` the main inventory (hotbar included) still takes.
+fn room(host: &dyn ServerHost, p: PlayerRef, kind: &ItemResource) -> u64 {
+    let max = u64::from(host.max_stack_size(kind.item()).unwrap_or(64));
+    let slots = p.inventory_slots(host).unwrap_or_default();
+    let held: Vec<&ItemStack> = slots.iter().filter(|(s, st)| *s < 36 && st.count() > 0).map(|(_, st)| st).collect();
+    let free = 36u64.saturating_sub(held.len() as u64) * max;
+    free + held.iter().filter(|st| kind.matches(st)).map(|st| max.saturating_sub(u64::from(st.count()))).sum::<u64>()
+}
+
+/// Drops `amount` of `kind` from the network in front of the player, as Q drops from a slot.
+fn drop_out(host: &mut dyn ServerHost, p: PlayerRef, kind: &ItemResource, amount: u64) {
+    let Some(dimension) = with(|s| s.sessions.get(&p.uuid()).map(|x| x.dimension.clone())) else { return };
+    let body = p.entity();
+    let (Some(eye), Some(look)) = (body.eye_position(&*host), body.view_vector(&*host)) else { return };
+    pull(host, p, kind, amount, |host, _, moved| {
+        let Some(item) = kind.to_stack(moved as u32).and_then(|s| s.to_nbt(&*host)) else { return false };
+        let motion = Tag::List(look.iter().map(|v| Tag::Double((v * 0.3).to_bits())).collect());
+        let nbt: Compound =
+            [("Item".into(), Tag::Compound(item)), ("Motion".into(), motion), ("PickupDelay".into(), Tag::Short(40))].into_iter().collect();
+        host.summon(&dimension, "minecraft:item", [eye[0], eye[1] - 0.3, eye[2]], nbt).is_some()
+    });
 }
 
 /// Moves up to `want` from `place` into the network in one transaction; all or nothing.
@@ -289,11 +371,38 @@ pub fn click(request: Click, cx: &mut dyn IPayloadContext) -> Result<(), String>
     let right = request.button.0 == 1;
     let held = cursor.resource(host);
     let entry = seen(&*host, uuid, request.index.0, &request.id);
+    let stack_of = |host: &dyn ServerHost, kind: &ItemResource| u64::from(host.max_stack_size(kind.item()).unwrap_or(64));
+    match (request.action.0, &entry) {
+        (action::CLICK, _) => {}
+        (action::ONE_OUT, Some(kind)) => take_to_inventory(host, p, kind, 1),
+        (action::ONE_IN, Some(kind)) => {
+            // From the main inventory before the hotbar, as a shift-click fills.
+            let slots = p.inventory_slots(&*host).unwrap_or_default();
+            let slot = slots.iter().filter(|(s, st)| *s < 36 && kind.matches(st)).map(|(s, _)| *s).max_by_key(|s| (*s >= 9, *s));
+            if let Some(slot) = slot {
+                store(host, p, ItemPlace::PlayerSlot { player: uuid, slot: slot as i32 }, Some(1));
+                refresh_all(host);
+            }
+        }
+        (action::ALL, Some(kind)) => {
+            let amount = room(&*host, p, kind);
+            take_to_inventory(host, p, kind, amount);
+        }
+        (action::DROP, Some(kind)) => drop_out(host, p, kind, 1),
+        (action::DROP_STACK, Some(kind)) => {
+            let amount = stack_of(&*host, kind);
+            drop_out(host, p, kind, amount);
+        }
+        _ => {}
+    }
+    if request.action.0 != action::CLICK {
+        return Ok(());
+    }
     match (request.shift, held, entry) {
         // Shift: a stack of the entry into the inventory.
         (true, _, Some(kind)) => {
-            let stack = u64::from(host.max_stack_size(kind.item()).unwrap_or(64));
-            take(host, p, ItemPlace::PlayerHand { player: uuid, hand: Hand::Main }, &kind, stack);
+            let stack = stack_of(&*host, &kind);
+            take_to_inventory(host, p, &kind, stack);
         }
         // Something on the cursor: it goes in (one with the right button).
         (false, Some(_), _) => {
@@ -380,7 +489,7 @@ pub fn recipe_clicked(host: &mut dyn ServerHost, uuid: u128, recipe: &str, all: 
         return;
     }
     for (kind, n) in &take_list {
-        take(host, p, ItemPlace::PlayerHand { player: uuid, hand: Hand::Main }, kind, *n);
+        take_to_inventory(host, p, kind, *n);
     }
 }
 

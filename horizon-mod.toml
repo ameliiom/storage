@@ -1,7 +1,7 @@
 id = "storage"
 name = "Storage"
-version = "0.3.0"
-description = "One terminal against your wall of chests shows everything in them as one inventory: same items merged, search, one click to take. Comforts are earned in the Skills tree Organization."
+version = "0.4.0"
+description = "Open any chest joined to others and a panel beside it shows everything in all of them as one list: merged totals, search, tabs, sorting, pins, quick moves, chest sorting. Comforts are earned in the Skills tree Organization."
 authors = ["ameliiom"]
 license = "MIT"
 # A native mod: Rust in src/, compiled by the launcher against the game build [native] pins.
