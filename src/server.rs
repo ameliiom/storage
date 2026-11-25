@@ -7,11 +7,12 @@
 use crate::chain::{self, Block, Pos};
 use crate::entries::{self, Entry};
 use crate::craft;
+use crate::organize::{self, Category, Label, Traits};
 use crate::payloads::{self, Click, View};
 use crate::skills;
 use mod_api::{
-    BlockMetadata, Hand, Host, HostBlockStates, HostTransaction, IPayloadContext, ItemPlace, ItemResource, LevelRef,
-    PlayerRef, STORAGE, ServerHost, StoragePage, Transaction, VarInt, VarLong,
+    BlockMetadata, ComponentId, Hand, Host, HostBlockStates, HostTransaction, IPayloadContext, ITEMS, ItemPlace, ItemResource,
+    LevelRef, PlayerRef, STORAGE, ServerHost, StoragePage, Tag, Transaction, VarInt, VarLong,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
@@ -133,9 +134,21 @@ fn session(host: &dyn ServerHost, uuid: u128) -> Option<(LevelRef, Pos, usize)> 
 fn insert(host: &mut dyn ServerHost, tx: &Transaction, uuid: u128, kind: &ItemResource, amount: u64) -> u64 {
     let Some((level, chest, cap)) = session(&*host, uuid) else { return 0 };
     let (found, entries) = read(host, level, chest, cap);
+    let labels = labels(host, level, &found);
     let holding: Vec<usize> =
         entries.iter().find(|e| &e.kind == kind).map(|e| e.holders.iter().map(|h| h.0).collect()).unwrap_or_default();
-    let order: Vec<usize> = holding.iter().copied().chain((0..found.len()).filter(|c| !holding.contains(c))).collect();
+    // Its labelled chests first, then where it already is, then the rest in label order.
+    let ranked = organize::targets(&kind.item().id(&*host), category(&*host, kind), &labels);
+    let homes = ranked.iter().copied().take_while(|&c| labels[c].is_some() && !holding.contains(&c));
+    let order: Vec<usize> = homes
+        .chain(holding.iter().copied().filter(|c| labels[*c].as_ref().is_none_or(|l| l.category == category(&*host, kind))))
+        .chain(ranked.iter().copied())
+        .fold(Vec::new(), |mut v, c| {
+            if !v.contains(&c) {
+                v.push(c);
+            }
+            v
+        });
     let mut left = amount;
     for c in order {
         if left == 0 {
@@ -164,6 +177,11 @@ fn refresh(host: &mut dyn ServerHost, uuid: u128) {
         totals: shown.iter().map(|e| VarLong(e.total.min(i64::MAX as u64) as i64)).collect(),
         containers: VarInt(found.len() as i32),
         comforts: VarInt(comforts),
+        categories: shown.iter().map(|e| category(&*host, &e.kind).index()).collect(),
+        slots: {
+            let (used, total) = usage(host, level, &found);
+            vec![VarInt(used as i32), VarInt(total as i32)]
+        },
     };
     with(|s| {
         if let Some(x) = s.sessions.get_mut(&uuid) {
@@ -363,5 +381,173 @@ pub fn recipe_clicked(host: &mut dyn ServerHost, uuid: u128, recipe: &str, all: 
     }
     for (kind, n) in &take_list {
         take(host, p, ItemPlace::PlayerHand { player: uuid, hand: Hand::Main }, kind, *n);
+    }
+}
+
+/// What an item is, for its category: worn, a tool or weapon, or with durability is gear; with a
+/// food component, food; in the item tag `storage:category/redstone`, redstone; else a block when
+/// a block shares its id, else a material.
+fn category(host: &dyn ServerHost, kind: &ItemResource) -> Category {
+    let has = |id: &str| ComponentId::new(id).is_some_and(|c| kind.value(host, &c).is_some());
+    let id = kind.item().id(host);
+    let tagged = |tag: &str| {
+        host.registry_entry("minecraft:item", &id).and_then(|e| host.registry_entry_in_tag(&e, tag)).unwrap_or(false)
+    };
+    organize::category(Traits {
+        gear: has("minecraft:max_damage") || has("minecraft:tool") || has("minecraft:weapon") || has("minecraft:equippable"),
+        food: has("minecraft:food"),
+        redstone: tagged("storage:category/redstone"),
+        block: host.registry_entry("minecraft:block", &id).is_some(),
+    })
+}
+
+/// Each container's label: the item in an item frame hanging on it.
+fn labels(host: &mut dyn ServerHost, level: LevelRef, containers: &[Pos]) -> Vec<Option<Label>> {
+    containers.iter().map(|&pos| label(host, level, pos)).collect()
+}
+
+/// The item frames in the loaded world, by dimension and entity id: `entities_in` leaves frames
+/// out, so they are tracked as they join and leave their level.
+static FRAMES: Mutex<Vec<(String, u32)>> = Mutex::new(Vec::new());
+
+fn frames<R>(f: impl FnOnce(&mut Vec<(String, u32)>) -> R) -> R {
+    f(&mut FRAMES.lock().unwrap_or_else(|e| e.into_inner()))
+}
+
+fn is_frame(kind: &str) -> bool {
+    kind == "minecraft:item_frame" || kind == "minecraft:glow_item_frame"
+}
+
+/// An entity joined a level: remember it when it is an item frame.
+pub fn entity_joined(dimension: &str, entity: u32, kind: &str) {
+    if is_frame(kind) {
+        frames(|f| f.push((dimension.to_owned(), entity)));
+    }
+}
+
+pub fn entity_left(entity: u32, kind: &str) {
+    if is_frame(kind) {
+        frames(|f| f.retain(|(_, id)| *id != entity));
+    }
+}
+
+fn label(host: &mut dyn ServerHost, level: LevelRef, pos: Pos) -> Option<Label> {
+    let dimension = level.dimension().id(&*host)?;
+    let centre = pos.map(|c| f64::from(c) + 0.5);
+    let near: Vec<u32> = frames(|f| f.iter().filter(|(d, _)| *d == dimension).map(|(_, id)| *id).collect());
+    for id in near {
+        let Some(frame) = host.entity(id) else { continue };
+        let Some(at) = frame.position(&*host) else { continue };
+        if (0..3).any(|i| (at[i] - centre[i]).abs() > 1.5) {
+            continue;
+        }
+        // An item frame's data: `Facing` (0 down, 1 up, 2 north, 3 south, 4 west, 5 east) and `Item`.
+        let Some(data) = frame.nbt(host) else { continue };
+        let data = Tag::Compound(data);
+        let (Some(Tag::Byte(facing)), Some(item)) = (data.get("Facing"), data.get("Item")) else { continue };
+        let back: Pos = match facing {
+            0 => [0, 1, 0],
+            1 => [0, -1, 0],
+            2 => [0, 0, 1],
+            3 => [0, 0, -1],
+            4 => [1, 0, 0],
+            _ => [-1, 0, 0],
+        };
+        let block = [at[0].floor() as i32 + back[0], at[1].floor() as i32 + back[1], at[2].floor() as i32 + back[2]];
+        if block != pos {
+            continue;
+        }
+        let Some(Tag::String(id)) = item.get("id") else { continue };
+        let id = id.to_string_lossy();
+        let stack = mod_api::Identifier::parse(&id).ok().and_then(|i| host.item_key(&i)).and_then(|k| mod_api::ItemStack::new(k, 1))?;
+        return Some(Label { category: category(&*host, &ItemResource::of(&stack)), id });
+    }
+    None
+}
+
+/// Slots used and slots in all, over the containers.
+fn usage(host: &mut dyn ServerHost, level: LevelRef, containers: &[Pos]) -> (usize, usize) {
+    let (mut used, mut total) = (0, 0);
+    for &pos in containers {
+        let Some(items) = level.capability(host, &ITEMS, pos, None) else { continue };
+        let size = items.size(host);
+        total += size;
+        used += (0..size).filter(|&i| items.amount(host, i) > 0).count();
+    }
+    (used, total)
+}
+
+/// Sort chests: every kind taken out and put back in order (labelled homes first, then category,
+/// then id), so partial stacks merge and the same items sit together. One transaction: if
+/// anything would not fit back, nothing moves.
+pub fn sort_chests(host: &mut dyn ServerHost, p: PlayerRef) {
+    let Some((level, chest, cap)) = session(&*host, p.uuid()) else { return };
+    let (found, entries) = read(host, level, chest, cap);
+    let labels = labels(host, level, &found);
+    let mut kinds: Vec<(String, Category, bool, usize)> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, e)| {
+            let id = e.kind.item().id(&*host);
+            let labelled = labels.iter().any(|l| l.as_ref().is_some_and(|l| l.id == id));
+            (id, category(&*host, &e.kind), labelled, i)
+        })
+        .collect();
+    organize::order(&mut kinds, |k| (k.0.as_str(), k.1, k.2));
+    let result = host.transaction(|host, tx| {
+        for e in &entries {
+            for &(c, n) in &e.holders {
+                if let Some(storage) = level.capability(host, &STORAGE, found[c], None) {
+                    storage.extract(host, tx, &e.kind, n);
+                }
+            }
+        }
+        for (id, cat, _, i) in &kinds {
+            let e = &entries[*i];
+            let mut left = e.total;
+            for c in organize::targets(id, *cat, &labels) {
+                if left == 0 {
+                    break;
+                }
+                if let Some(storage) = level.capability(host, &STORAGE, found[c], None) {
+                    left -= storage.insert(host, tx, &e.kind, left).min(left);
+                }
+            }
+            if left > 0 {
+                return Err(id.clone());
+            }
+        }
+        Ok(())
+    });
+    if let Err(id) = result {
+        eprintln!("[storage] sort chests rolled back: {id} would not fit back");
+    }
+    refresh_all(host);
+}
+
+/// Deposit matching: every stack of the main inventory (not the hotbar) whose kind storage
+/// already holds goes in.
+pub fn deposit_matching(host: &mut dyn ServerHost, p: PlayerRef) {
+    let Some((level, chest, cap)) = session(&*host, p.uuid()) else { return };
+    let (_, entries) = read(host, level, chest, cap);
+    for slot in 9..36 {
+        let place = ItemPlace::PlayerSlot { player: p.uuid(), slot };
+        if place.resource(host).is_some_and(|r| entries.iter().any(|e| e.kind == r)) {
+            store(host, p, place, None);
+        }
+    }
+    refresh_all(host);
+}
+
+/// Restock: every partial stack in the inventory (hotbar included) is filled from storage.
+pub fn restock(host: &mut dyn ServerHost, p: PlayerRef) {
+    for slot in 0..36 {
+        let place = ItemPlace::PlayerSlot { player: p.uuid(), slot };
+        let Some(kind) = place.resource(host) else { continue };
+        let max = u64::from(host.max_stack_size(kind.item()).unwrap_or(64));
+        let room = max.saturating_sub(u64::from(place.amount(host)));
+        if room > 0 {
+            take(host, p, place, &kind, room);
+        }
     }
 }

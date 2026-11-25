@@ -1,6 +1,5 @@
 {
   "storage.search": "بحث…",
-  "storage.joined": "%s صندوق",
   "storage.sort.count": "مرتب حسب العدد",
   "storage.sort.name": "مرتب حسب الاسم",
   "storage.sort.mod": "مرتب حسب المود",
@@ -19,5 +18,20 @@
   "skills.perk.storage.network.256": "لين 256 صندوق مع بعض",
   "skills.perk.storage.network.1024": "لين 1024 صندوق مع بعض",
   "storage.node.craft": "وصفات من الصناديق",
-  "skills.perk.storage.craft": "ضغطة وصفة عند طاولة الصناعة تسحب من الصناديق"
+  "skills.perk.storage.craft": "ضغطة وصفة عند طاولة الصناعة تسحب من الصناديق",
+  "storage.tab.all": "الكل",
+  "storage.tab.gear": "أدوات وأسلحة ودروع",
+  "storage.tab.food": "أكل",
+  "storage.tab.redstone": "ريدستون",
+  "storage.tab.materials": "مواد",
+  "storage.tab.blocks": "بلوكات",
+  "storage.tab.mods": "من المودات",
+  "storage.sort.id": "مرتب حسب المعرّف",
+  "storage.sort.recent": "آخر شي تغيّر أول",
+  "storage.sort.up": "ضغطة يمين: اعكس",
+  "storage.sort.down": "معكوس (ضغطة يمين ترجعه)",
+  "storage.tidy": "رتّب الصناديق: ادمج الستاكات وحط المتشابه مع بعض",
+  "storage.match": "حط اللي موجود أصلاً في التخزين",
+  "storage.restock": "كمّل ستاكاتك من التخزين",
+  "storage.capacity": "%1$s / %2$s خانة، %3$s صندوق"
 }

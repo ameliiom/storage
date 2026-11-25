@@ -108,7 +108,7 @@ its category-filter addon; AE2 Favorites' pinned items; Quark and Inventory Prof
 "deposit matching / restock" buttons) and against the owner's own rule that every list ships its
 full operator toolkit, 0.2 is a bare list. What is missing, by how much it changes daily play:
 
-### Phase 1: organize (the core of a storage mod)
+### Phase 1: organize (the core of a storage mod) — built in 0.3.0
 
 | # | Gap | What it becomes | Built on |
 |---|---|---|---|
@@ -135,6 +135,25 @@ full operator toolkit, 0.2 is a bare list. What is missing, by how much it chang
 - **Storage from the inventory**: the panel beside your own inventory screen when you stand in
   your storage room (no new block, no remote item).
 - **Low-stock marks**: an entry you pin can carry a minimum; below it the entry glows red.
+
+Phase 1 as built and measured (2026-11-25, 50 chests, Horizon f037744):
+
+- **Sort chests** (brush button): every kind taken out and put back in one transaction; the
+  chest with a diamond in an item frame received all the diamonds first, its free room then took
+  other materials (its category).
+- **Labels**: `entities_in` leaves item frames out (its doc says so), so frames are tracked as
+  they join and leave levels (`entity_join_level`), and a frame belongs to the chest behind it
+  (`Facing`). No scan, no polling.
+- **Deposit matching** (hopper): 20 dirt in the inventory went in, sticks storage does not hold
+  stayed. **Restock** (dropper): cobblestone 10 → 64, oak logs 3 → 64.
+- **Category tabs** on the panel's side (everything, gear, food, redstone, materials, blocks,
+  mods), from item components (durability, tool, weapon, worn, food), the item tag
+  `storage:category/redstone` (packs extend it) and whether a block shares the id.
+- **Sort orders**: count, name, mod, id, recently changed; right-click reverses; the order holds
+  still while you shift-click and settles when the mouse leaves the panel.
+- **Capacity bar**: green, amber past 75%, red past 90%; its tooltip gives slots and chests.
+- Buttons wrap to two rows on a narrow panel; a test checks every control stays inside the panel
+  at every width.
 
 Not planned: grouping by Horizon-level "storage disks" or power (chores, against the owner's
 rules).

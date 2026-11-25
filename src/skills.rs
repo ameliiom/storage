@@ -91,6 +91,9 @@ pub fn comfort(request: Comfort, cx: &mut dyn IPayloadContext) -> Result<(), Str
             }
         }
         comfort::EMPTY if has(&*host, p, EMPTY) => server::empty(host, p),
+        comfort::SORT => server::sort_chests(host, p),
+        comfort::MATCH => server::deposit_matching(host, p),
+        comfort::RESTOCK => server::restock(host, p),
         _ => {}
     }
     Ok(())

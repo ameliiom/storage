@@ -17,6 +17,10 @@ pub struct View {
     pub containers: VarInt,
     /// The comforts this player has earned: bit 0 Find, bit 1 quick deposit.
     pub comforts: VarInt,
+    /// Each entry's `organize::Category` index, beside `ids`.
+    pub categories: Vec<u8>,
+    /// Slots used, then slots in all, over the joined containers.
+    pub slots: Vec<VarInt>,
 }
 
 /// Client → server: a click on the storage panel, as a chest's slot takes one. On entry `index`
@@ -43,6 +47,10 @@ pub struct Comfort {
 pub mod comfort {
     pub const FIND: i32 = 0;
     pub const EMPTY: i32 = 1;
+    /// Sort chests, deposit matching and restock: not comforts, everyone has them.
+    pub const SORT: i32 = 2;
+    pub const MATCH: i32 = 3;
+    pub const RESTOCK: i32 = 4;
 }
 
 pub static VIEW: OnceLock<ToClient<View>> = OnceLock::new();

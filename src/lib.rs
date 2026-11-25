@@ -9,6 +9,7 @@
 //!   Organization through Storage's own attributes and statistic.
 pub mod chain;
 pub mod craft;
+pub mod organize;
 mod client;
 pub mod entries;
 pub mod payloads;
@@ -16,7 +17,7 @@ mod server;
 mod skills;
 
 use mod_api::{
-    ClientHost, ClientTickPreEvent, Flow, Hooks, IPayloadContext, PayloadId, PlayerContainerCloseEvent,
+    ClientHost, ClientTickPreEvent, EntityJoinLevelEvent, EntityLeaveLevelEvent, Flow, Hooks, IPayloadContext, PayloadId, PlayerContainerCloseEvent,
     PlayerContainerOpenEvent, PlayerLoggedOutEvent, PlayerRecipeBookClickEvent, RecipeSourcesEvent, Registrar, RegistrationContext, ScreenCharTypedPreEvent,
     ScreenClosingEvent, ScreenKeyPressedPreEvent, ScreenMouseButtonPressedPreEvent, ScreenMouseScrolledPreEvent,
     ScreenRenderBackgroundEvent, ScreenRenderPostEvent, ServerHost, ServerTickEvent, ServerTickPhase, SettingSpec,
@@ -62,6 +63,16 @@ impl Hooks for Mod {
     /// ingredients come from the chests.
     fn player_recipe_book_click(&self, host: &mut dyn ServerHost, event: &mut PlayerRecipeBookClickEvent<'_>) {
         server::recipe_clicked(host, event.player, event.recipe, event.all);
+    }
+
+    /// Item frames are tracked as they come and go: a frame on a chest is its label.
+    fn entity_join_level(&self, _: &mut dyn ServerHost, event: &mut EntityJoinLevelEvent<'_>) -> Flow {
+        server::entity_joined(event.dimension, event.entity, event.kind);
+        Flow::Continue
+    }
+
+    fn entity_leave_level(&self, _: &mut dyn ServerHost, event: &mut EntityLeaveLevelEvent<'_>) {
+        server::entity_left(event.entity, event.kind);
     }
 
     fn player_container_open(&self, host: &mut dyn ServerHost, event: &mut PlayerContainerOpenEvent<'_>) {

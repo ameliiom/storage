@@ -1,6 +1,5 @@
 {
   "storage.search": "Search…",
-  "storage.joined": "%s chests",
   "storage.sort.count": "Sorted by count",
   "storage.sort.name": "Sorted by name",
   "storage.sort.mod": "Sorted by mod",
@@ -19,5 +18,20 @@
   "skills.perk.storage.network.256": "Up to 256 chests together",
   "skills.perk.storage.network.1024": "Up to 1024 chests together",
   "storage.node.craft": "Recipes From Chests",
-  "skills.perk.storage.craft": "A recipe-book click at a crafting table takes from the chests"
+  "skills.perk.storage.craft": "A recipe-book click at a crafting table takes from the chests",
+  "storage.tab.all": "Everything",
+  "storage.tab.gear": "Tools, weapons and armour",
+  "storage.tab.food": "Food",
+  "storage.tab.redstone": "Redstone",
+  "storage.tab.materials": "Materials",
+  "storage.tab.blocks": "Blocks",
+  "storage.tab.mods": "From mods",
+  "storage.sort.id": "Sorted by id",
+  "storage.sort.recent": "Changed last first",
+  "storage.sort.up": "Right-click: reverse",
+  "storage.sort.down": "Reversed (right-click to undo)",
+  "storage.tidy": "Sort the chests: merge stacks and put like with like",
+  "storage.match": "Put in what storage already holds",
+  "storage.restock": "Fill your stacks from storage",
+  "storage.capacity": "%1$s / %2$s slots, %3$s chests"
 }

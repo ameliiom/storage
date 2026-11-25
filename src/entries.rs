@@ -46,15 +46,19 @@ pub enum Sort {
     Name,
     /// By mod (namespace), then name.
     Mod,
+    /// By item id.
+    Id,
+    /// What changed last first.
+    Recent,
 }
 
 impl Sort {
+    /// Every order, in the order the sort button steps through them.
+    pub const ALL: [Sort; 5] = [Sort::Count, Sort::Name, Sort::Mod, Sort::Id, Sort::Recent];
+
     pub fn next(self) -> Self {
-        match self {
-            Sort::Count => Sort::Name,
-            Sort::Name => Sort::Mod,
-            Sort::Mod => Sort::Count,
-        }
+        let i = Self::ALL.iter().position(|s| *s == self).unwrap_or(0);
+        Self::ALL[(i + 1) % Self::ALL.len()]
     }
 }
 
@@ -65,6 +69,8 @@ pub struct Shown<'a> {
     /// `minecraft:stone`.
     pub id: &'a str,
     pub total: u64,
+    /// When its total last changed (a counter the client keeps; larger is later).
+    pub changed: u64,
 }
 
 /// The search box's meaning: words that must all be in the name (or id), `@mod` for a
@@ -85,8 +91,9 @@ pub fn matches(query: &str, shown: &Shown, has_tag: impl Fn(&str) -> bool) -> bo
     })
 }
 
-/// Orders shown entries (indices into `shown`); ties fall back to the id so the order is stable.
-pub fn order(shown: &[Shown], sort: Sort) -> Vec<usize> {
+/// Orders shown entries (indices into `shown`), reversed when `reverse`; ties fall back to the
+/// id so the order is stable.
+pub fn order(shown: &[Shown], sort: Sort, reverse: bool) -> Vec<usize> {
     let mut idx: Vec<usize> = (0..shown.len()).collect();
     idx.sort_by(|&a, &b| {
         let (a, b) = (&shown[a], &shown[b]);
@@ -97,8 +104,11 @@ pub fn order(shown: &[Shown], sort: Sort) -> Vec<usize> {
                 let ns = |s: &str| s.split(':').next().unwrap_or("").to_owned();
                 ns(a.id).cmp(&ns(b.id)).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
             }
+            Sort::Id => a.id.cmp(b.id),
+            Sort::Recent => b.changed.cmp(&a.changed),
         };
-        by.then_with(|| a.id.cmp(b.id))
+        let by = by.then_with(|| a.id.cmp(b.id));
+        if reverse { by.reverse() } else { by }
     });
     idx
 }
@@ -157,7 +167,7 @@ mod tests {
 
     #[test]
     fn search_reads_names_ids_mods_and_tags_in_any_language() {
-        let shown = Shown { name: "حجر مصقول", id: "minecraft:polished_andesite", total: 3 };
+        let shown = Shown { name: "حجر مصقول", id: "minecraft:polished_andesite", total: 3, changed: 0 };
         let no_tag = |_: &str| false;
         assert!(matches("", &shown, no_tag));
         assert!(matches("حجر", &shown, no_tag));
@@ -172,14 +182,22 @@ mod tests {
     #[test]
     fn sorting_is_stable_and_follows_the_choice() {
         let shown = [
-            Shown { name: "Dirt", id: "minecraft:dirt", total: 5 },
-            Shown { name: "apple", id: "minecraft:apple", total: 5 },
-            Shown { name: "Gear", id: "create:gear", total: 9 },
+            Shown { name: "Dirt", id: "minecraft:dirt", total: 5, changed: 2 },
+            Shown { name: "apple", id: "minecraft:apple", total: 5, changed: 7 },
+            Shown { name: "Gear", id: "create:gear", total: 9, changed: 1 },
         ];
-        assert_eq!(order(&shown, Sort::Count), vec![2, 1, 0]);
-        assert_eq!(order(&shown, Sort::Name), vec![1, 0, 2]);
-        assert_eq!(order(&shown, Sort::Mod), vec![2, 1, 0]);
-        assert_eq!(Sort::Mod.next(), Sort::Count);
+        assert_eq!(order(&shown, Sort::Count, false), vec![2, 1, 0]);
+        assert_eq!(order(&shown, Sort::Count, true), vec![0, 1, 2]);
+        assert_eq!(order(&shown, Sort::Name, false), vec![1, 0, 2]);
+        assert_eq!(order(&shown, Sort::Mod, false), vec![2, 1, 0]);
+        assert_eq!(order(&shown, Sort::Id, false), vec![2, 1, 0]);
+        assert_eq!(order(&shown, Sort::Recent, false), vec![1, 0, 2]);
+        // The button steps through every order and comes back.
+        let mut s = Sort::Count;
+        for _ in 0..Sort::ALL.len() {
+            s = s.next();
+        }
+        assert_eq!(s, Sort::Count);
     }
 
     #[test]
@@ -188,6 +206,22 @@ mod tests {
         for (n, text) in cases {
             assert_eq!(count_text(n), text, "{n}");
             assert!(count_text(n).is_ascii());
+        }
+    }
+
+    #[test]
+    fn every_key_the_code_shows_is_in_both_languages() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let read = |l: &str| -> serde_json::Value {
+            serde_json::from_slice(&std::fs::read(root.join(format!("assets/storage/lang/{l}.json"))).unwrap()).unwrap()
+        };
+        let (en, ar) = (read("en_us"), read("ar_sa"));
+        let keys = |v: &serde_json::Value| v.as_object().unwrap().keys().cloned().collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(keys(&en), keys(&ar), "en_us and ar_sa differ");
+        // The panel (client.rs) is the only code that shows text: every `storage.` key it names.
+        let text = std::fs::read_to_string(root.join("src/client.rs")).unwrap();
+        for part in text.split('"').skip(1).step_by(2).filter(|p| p.starts_with("storage.") && !p.contains(' ')) {
+            assert!(en.get(part).is_some(), "the panel shows {part}, missing from en_us");
         }
     }
 
