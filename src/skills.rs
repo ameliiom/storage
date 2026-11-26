@@ -1,3 +1,4 @@
+#![allow(unexpected_cfgs)]
 //! The comforts earned in the Skills tree Organization, with no code tie to Skills: an unlocked
 //! node gives the player a vanilla tag (`/tag`) that Storage reads (`storage.find`,
 //! `storage.quick_deposit`, `storage.low_stock`, `storage.auto_sort`, `storage.inventory`,
@@ -125,8 +126,13 @@ pub fn comfort(request: Comfort, cx: &mut dyn IPayloadContext) -> Result<(), Str
     let host = cx.server_host().map_err(|e| format!("{e:?}"))?;
     match request.kind.0 {
         comfort::FIND if has(&*host, p, FIND) => {
-            if let Some((dimension, at)) = server::holders(&*host, p.uuid(), request.index.0, &request.id) {
-                glows(|g| g.push(Glow { dimension, at, left: GLOW_TICKS }));
+            if let Some((dimension, held)) = server::holders(&*host, p.uuid(), request.index.0, &request.id) {
+                // With Team, Find is a Team ping (one meaning: "look here, everyone"); without
+                // it, the chests glow.
+                if !team_ping(host, p, &dimension, &held) {
+                    let at = held.into_iter().map(|(pos, _)| pos).collect();
+                    glows(|g| g.push(Glow { dimension, at, left: GLOW_TICKS }));
+                }
             }
         }
         comfort::EMPTY if has(&*host, p, EMPTY) => server::empty(host, p),
@@ -144,6 +150,48 @@ pub fn near(request: Near, cx: &mut dyn IPayloadContext) -> Result<(), String> {
     let host = cx.server_host().map_err(|e| format!("{e:?}"))?;
     server::near(host, p, request.open);
     Ok(())
+}
+
+/// The chest holding the most (ties: the nearest, first in walk order).
+#[cfg_attr(not(feature = "team"), allow(dead_code))]
+pub fn most_held(held: &[([i32; 3], u64)]) -> Option<[i32; 3]> {
+    held.iter().fold(None, |best: Option<([i32; 3], u64)>, &(pos, n)| match best {
+        Some((_, b)) if b >= n => best,
+        _ => Some((pos, n)),
+    }).map(|(pos, _)| pos)
+}
+
+/// With Team installed, Find sends Team's own "look here" marker (its loot ping, the chest's
+/// icon, in the player's colour) over the chest holding the most, to every player, through Team's
+/// marker sender (`team::payloads::SHOW`). False without Team, or when nothing was sent.
+#[allow(unused_variables)]
+fn team_ping(host: &mut dyn ServerHost, p: PlayerRef, dimension: &str, held: &[([i32; 3], u64)]) -> bool {
+    #[cfg(feature = "team")]
+    {
+        use team::payloads::{Marker, PingKind, SHOW};
+        let (Some(show), Some(at)) = (SHOW.get(), most_held(held)) else { return false };
+        let Some(level) = host.level(dimension) else { return false };
+        use mod_api::{BlockMetadata, HostBlockStates};
+        let meta = host.block_states();
+        let block = level.block_state(&*host, at).and_then(|s| meta.name(s.block()).ok().map(str::to_owned));
+        let marker = Marker {
+            owner: p.name(&*host).unwrap_or_default(),
+            kind: PingKind::Loot,
+            x: f64::from(at[0]) + 0.5,
+            y: f64::from(at[1]) + 1.0,
+            z: f64::from(at[2]) + 0.5,
+            entity: None,
+            block,
+            dimension: dimension.to_owned(),
+        };
+        let mut sent = false;
+        for to in host.players().server_players() {
+            sent |= show.send(host, to, &marker).is_ok();
+        }
+        return sent;
+    }
+    #[allow(unreachable_code)]
+    false
 }
 
 /// Each server tick: found chests puff glowing particles for everyone to see.
@@ -174,6 +222,13 @@ pub fn tick(host: &mut dyn ServerHost, ticks: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn find_marks_the_chest_holding_the_most() {
+        assert_eq!(most_held(&[]), None);
+        assert_eq!(most_held(&[([0, 0, 0], 5), ([1, 0, 0], 64), ([2, 0, 0], 64)]), Some([1, 0, 0]));
+        assert_eq!(most_held(&[([3, 1, 2], 1)]), Some([3, 1, 2]));
+    }
 
     #[test]
     fn the_biggest_network_tag_wins_within_bounds() {

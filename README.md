@@ -23,7 +23,7 @@ For [Horizon](https://playhorizon.dev) (Minecraft: Java Edition 26.3 in Rust). O
 
 ## Comforts from Skills
 With [Skills](https://github.com/ameliiom/skills) 0.2 or later, a sixth tree, **Organization**, grows as you move items and open chests:
-- **Where Is It?**: F over an entry makes its chests glow for everyone.
+- **Where Is It?**: F over an entry shows everyone where it is: with [Team](https://github.com/ameliiom/team) installed, a Team marker (your colour, the chest's icon, its distance, on the map too) over the chest holding the most of it; without Team, its chests glow.
 - **Quick Deposit**: a button puts your whole inventory (not the hotbar) in.
 - **Recipes From Chests**: at a crafting table beside your chests, one click on a recipe in the recipe book takes the ingredients from the chests.
 - **Bigger Network** I/II/III: 64, 256 and 1024 chests together (16 to start).

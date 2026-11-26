@@ -579,13 +579,13 @@ pub fn click(request: Click, cx: &mut dyn IPayloadContext) -> Result<(), String>
 }
 
 /// The chests holding entry `index` (whose id was `id`) of `uuid`'s open network, for Find.
-pub fn holders(host: &dyn ServerHost, uuid: u128, index: i32, id: &str) -> Option<(String, Vec<Pos>)> {
+pub fn holders(host: &dyn ServerHost, uuid: u128, index: i32, id: &str) -> Option<(String, Vec<(Pos, u64)>)> {
     let kind = seen(host, uuid, index, id)?;
     let (level, chest, cap) = session(host, uuid)?;
     let dimension = with(|s| s.sessions.get(&uuid).map(|x| x.dimension.clone()))?;
     let found = walk(host, level, chest, cap);
     let entry = with(|s| s.sessions.get(&uuid)?.entries.iter().find(|e| e.kind == kind).cloned())?;
-    Some((dimension, entry.holders.iter().filter_map(|&(c, _)| found.get(c).copied()).collect()))
+    Some((dimension, entry.holders.iter().filter_map(|&(c, n)| Some((*found.get(c)?, n))).collect()))
 }
 
 /// Quick deposit: every stack of the main inventory (not the hotbar) into storage.

@@ -255,3 +255,12 @@ turned off in the mod's settings (`shulker_peek` for the player, `furnace_feed` 
 
 Not planned: grouping by Horizon-level "storage disks" or power (chores, against the owner's
 rules).
+
+### 0.7.1: Where Is It? through Team
+
+Find's glow repeated Team's ping ("look here, everyone"), so with Team installed Find sends Team's
+own marker instead: its loot ping, the chest's icon, in the player's colour, over the chest holding
+the most of the item (`skills::most_held`), sent through Team's marker sender
+(`team::payloads::SHOW`, an optional dependency, as Map reads Team). Without Team the chests still
+glow. Measured in the game (2026-11-26): F over coal (only in the far chest of two) put a marker
+with the chest icon and "4" over that chest and on the minimap (`docs/find-team.png`).
