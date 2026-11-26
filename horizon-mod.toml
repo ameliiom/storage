@@ -1,6 +1,6 @@
 id = "storage"
 name = "Storage"
-version = "0.7.1"
+version = "0.7.2"
 description = "Open any chest joined to others and a panel beside it shows everything in all of them as one list: merged totals, search, tabs, sorting, pins, quick moves, chest sorting. Comforts are earned in the Skills tree Organization."
 authors = ["ameliiom"]
 license = "MIT"
@@ -12,6 +12,8 @@ capabilities = ["registries"]
 
 # Team, when installed, carries Find as its own ping marker (`skills::team_ping`).
 [dependencies]
+# The shared code of ameliiom's mods (settings, comforts, inventory, outline, ...).
+kit = "^0.1"
 team = { version = "^0.3", optional = true }
 
 [native]

@@ -136,9 +136,7 @@ fn read(host: &mut dyn ServerHost, level: LevelRef, chest: Pos, cap: usize) -> (
     (found, entries)
 }
 
-fn player(host: &dyn ServerHost, uuid: u128) -> Option<PlayerRef> {
-    host.players().server_players().into_iter().find(|p| p.uuid() == uuid)
-}
+use crate::kit::players::by_uuid as player;
 
 /// The session's level, chest and network size.
 fn session(host: &dyn ServerHost, uuid: u128) -> Option<(LevelRef, Pos, usize)> {
@@ -413,32 +411,7 @@ fn take(host: &mut dyn ServerHost, p: PlayerRef, place: ItemPlace, kind: &ItemRe
 /// Takes up to `amount` of `kind` into the main inventory (`PlayerHand` holds only the hand's
 /// slot: 168 cobblestone to it rolled back).
 fn take_to_inventory(host: &mut dyn ServerHost, p: PlayerRef, kind: &ItemResource, amount: u64) {
-    pull(host, p, kind, amount, |host, tx, moved| to_inventory(host, tx, p, kind, moved) == moved);
-}
-
-/// Puts up to `n` of `kind` into the main inventory in `tx` as a pickup fills it: onto stacks of
-/// it first, then into empty slots, hotbar first. How many went in. Each slot is asked for no
-/// more than it has room for (a slot asked for more than a stack takes nothing).
-fn to_inventory(host: &mut dyn ServerHost, tx: &Transaction, p: PlayerRef, kind: &ItemResource, n: u64) -> u64 {
-    let max = u64::from(host.max_stack_size(kind.item()).unwrap_or(64));
-    let slots = p.inventory_slots(&*host).unwrap_or_default();
-    let held: Vec<(u32, Option<u64>)> = slots
-        .iter()
-        .filter(|(s, st)| *s < 36 && st.count() > 0)
-        .map(|(s, st)| (*s, kind.matches(st).then(|| max.saturating_sub(u64::from(st.count())))))
-        .collect();
-    let same = held.iter().filter_map(|&(s, room)| Some((s, room?)));
-    let empty = (0..36u32).filter(|s| !held.iter().any(|h| h.0 == *s)).map(|s| (s, max));
-    let order: Vec<(u32, u64)> = same.chain(empty).filter(|&(_, room)| room > 0).collect();
-    let mut left = n;
-    for (slot, room) in order {
-        if left == 0 {
-            break;
-        }
-        let place = ItemPlace::PlayerSlot { player: p.uuid(), slot: slot as i32 };
-        left -= u64::from(place.insert(host, tx, kind, left.min(room) as u32)).min(left);
-    }
-    n - left
+    pull(host, p, kind, amount, |host, tx, moved| crate::kit::inventory::fill(host, tx, p, kind, moved) == moved);
 }
 
 /// Takes up to `amount` of `kind` out of the network, nearest first, and hands what came out to

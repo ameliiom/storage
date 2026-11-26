@@ -316,9 +316,7 @@ fn item_name(host: &dyn ClientHost, id: &str) -> String {
         .unwrap_or_else(|| id.to_owned())
 }
 
-fn tr(host: &dyn ClientHost, key: &str, fallback: &str) -> String {
-    host.translate(key).unwrap_or_else(|| fallback.to_owned())
-}
+use crate::kit::lang::tr;
 
 fn total(view: &View, i: usize) -> u64 {
     view.totals.get(i).map_or(0, |t| t.0.max(0) as u64)

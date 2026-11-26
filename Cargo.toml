@@ -1,6 +1,6 @@
 [package]
 name = "mod-storage"
-version = "0.7.1"
+version = "0.7.2"
 edition = "2024"
 
 [dependencies]
@@ -9,3 +9,6 @@ horizon-mod-api = { path = ".horizon/sdk/api/crates/horizon-mod-api" }
 # Stacks with components cross to the client as typed JSON (nbtjson.rs); the version the engine lock pins.
 serde_json = "1.0.151"
 
+[lints.rust]
+# `kit_local`: set for local builds by horizon-mods/.cargo/config.toml (Kit's source in place).
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kit_local)'] }

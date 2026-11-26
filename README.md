@@ -36,6 +36,8 @@ With [Skills](https://github.com/ameliiom/skills) 0.2 or later, a sixth tree, **
 Each comfort can be turned off in the mod's settings. Without Skills, the server setting **All comforts without Skills** opens them all.
 
 ## Install
+Needs [Kit](https://github.com/ameliiom/kit) 0.1 or later, the shared code of these mods, installed the same way (`kit.hmod`, `mod.kit:true`).
+
 1. Copy `storage.hmod` into `%APPDATA%\horizon\horizon-native-mods\`.
 2. Add the line `mod.storage:true` to `%APPDATA%\horizon\horizon-mods.txt`.
 3. Build: the launcher's Mods page **Build**, or `horizon-launcher native-build --instance horizon --trust-native-code`. A native mod runs with your rights: install it only from a source you trust.

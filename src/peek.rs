@@ -63,7 +63,7 @@ fn contents(host: &dyn ClientHost, stack: &ItemStack) -> Vec<(i32, ItemStack)> {
 }
 
 fn on(host: &dyn ClientHost) -> bool {
-    EARNED.load(Ordering::Relaxed) && host.setting_bool(crate::setting::SHULKER_PEEK).unwrap_or(true)
+    EARNED.load(Ordering::Relaxed) && crate::setting::SHULKER_PEEK.read_client(host)
 }
 
 #[derive(Clone)]

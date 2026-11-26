@@ -286,14 +286,11 @@ mod tests {
     }
 
     #[test]
-    fn every_key_the_code_shows_is_in_both_languages() {
+    /// (That both languages hold the same keys is the workspace's `tools/lang_gate.py`.)
+    fn every_key_the_code_shows_has_its_line() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let read = |l: &str| -> serde_json::Value {
-            serde_json::from_slice(&std::fs::read(root.join(format!("assets/storage/lang/{l}.json"))).unwrap()).unwrap()
-        };
-        let (en, ar) = (read("en_us"), read("ar_sa"));
-        let keys = |v: &serde_json::Value| v.as_object().unwrap().keys().cloned().collect::<std::collections::BTreeSet<_>>();
-        assert_eq!(keys(&en), keys(&ar), "en_us and ar_sa differ");
+        let en: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(root.join("assets/storage/lang/en_us.json")).unwrap()).unwrap();
         // The panel (client.rs) is the only code that shows text: every `storage.` key it names.
         let text = std::fs::read_to_string(root.join("src/client.rs")).unwrap();
         for part in text.split('"').skip(1).step_by(2).filter(|p| p.starts_with("storage.") && !p.contains(' ')) {

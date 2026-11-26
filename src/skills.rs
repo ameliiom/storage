@@ -6,6 +6,7 @@
 //! statistic, and the tree ships as a data file only Skills reads. Without Skills, the server's
 //! `all_comforts` setting opens them.
 use crate::payloads::{Comfort, Near, comfort};
+use crate::kit;
 use crate::server;
 #[allow(unused_imports)]
 use mod_api::prelude::*;
@@ -48,33 +49,19 @@ pub fn register(r: &mut dyn Registrar) {
     }
 }
 
-fn all(host: &dyn ServerHost) -> bool {
-    host.setting(crate::MOD_ID, crate::setting::ALL_COMFORTS).is_some_and(|v| v.trim() == "true")
-}
-
-fn tags(host: &dyn ServerHost, p: PlayerRef) -> Vec<String> {
-    p.entity().tags(host).unwrap_or_default()
-}
-
 /// Whether a player has the comfort `tag`.
 pub fn has(host: &dyn ServerHost, p: PlayerRef, tag: &str) -> bool {
-    all(host) || tags(host, p).iter().any(|t| t == tag)
+    kit::comforts::read(host, crate::MOD_ID, p, |tags, all| all || kit::comforts::has(tags, tag))
 }
 
 /// How many containers a player's chests show together.
 pub fn network(host: &dyn ServerHost, p: PlayerRef) -> usize {
-    if all(host) {
-        return NETWORK_MAX;
-    }
-    network_of(&tags(host, p))
+    kit::comforts::read(host, crate::MOD_ID, p, |tags, all| if all { NETWORK_MAX } else { network_of(tags) })
 }
 
 /// The largest `storage.network.<n>` among `tags`, at least the start.
 fn network_of(tags: &[String]) -> usize {
-    tags.iter()
-        .filter_map(|t| t.strip_prefix(NETWORK)?.parse::<usize>().ok())
-        .fold(NETWORK_START, usize::max)
-        .min(NETWORK_MAX)
+    kit::comforts::best(tags, NETWORK, NETWORK_MAX).max(NETWORK_START)
 }
 
 /// Counts moved items toward Organization's experience.
@@ -254,7 +241,7 @@ mod tests {
             .filter_map(|p| p["tag"].as_str().map(str::to_owned))
             .collect();
         for tag in &given {
-            let read = COMFORTS.contains(&tag.as_str()) || [CRAFT, PEEK, FURNACE].contains(&tag.as_str()) || tag.strip_prefix(NETWORK).is_some_and(|n| n.parse::<usize>().is_ok());
+            let read = COMFORTS.contains(&tag.as_str()) || [CRAFT, PEEK, FURNACE].contains(&tag.as_str()) || kit::comforts::is_level(tag, &[NETWORK]);
             assert!(read, "the tree gives {tag}, which Storage never reads");
         }
         for wanted in COMFORTS.into_iter().chain([CRAFT, PEEK, FURNACE]) {

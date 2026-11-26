@@ -134,7 +134,7 @@ fn places(host: &dyn ServerHost, pos: Pos) -> Vec<String> {
 }
 
 fn enabled(host: &dyn ServerHost) -> bool {
-    host.setting(crate::MOD_ID, crate::setting::FURNACE_FEED).is_none_or(|v| v.trim() != "false")
+    crate::setting::FURNACE_FEED.read(host, crate::MOD_ID)
 }
 
 /// How many containers a furnace in `dimension` reaches: the biggest network among the players

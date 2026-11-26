@@ -10,6 +10,14 @@
 //!   Organization through tags and Storage's own statistic.
 //! - **Shulker peek** (`peek.rs`): a shulker box's slots in its tooltip.
 //! - **Furnaces from chests** (`furnace.rs`): furnaces touching a network cook from it.
+// Kit (ameliiom/kit), the shared code: the installed Kit mod, or its source in place for
+// local builds (`kit_local`, horizon-mods/.cargo/config.toml).
+#[cfg(kit_local)]
+#[allow(dead_code)]
+#[path = "../../kit/src/lib.rs"]
+mod kit;
+#[cfg(not(kit_local))]
+use ::kit;
 pub mod chain;
 pub mod craft;
 pub mod furnace;
@@ -26,7 +34,7 @@ use mod_api::{
     ClientHost, ClientTickPreEvent, EntityJoinLevelEvent, EntityLeaveLevelEvent, Flow, FurnaceBurnEvent, FurnaceExtractEvent, FurnaceSmeltEvent, Hooks, IPayloadContext, PayloadId, PlayerContainerCloseEvent,
     PlayerContainerOpenEvent, PlayerLoggedOutEvent, PlayerRecipeBookClickEvent, RecipeSourcesEvent, Registrar, RegistrationContext, ScreenCharTypedPreEvent,
     ScreenClosingEvent, ScreenKeyPressedPreEvent, ScreenMouseButtonPressedPreEvent, ScreenMouseScrolledPreEvent,
-    ScreenRenderBackgroundEvent, ScreenRenderPostEvent, ServerHost, ServerTickEvent, ServerTickPhase, SettingSpec,
+    ScreenRenderBackgroundEvent, ScreenRenderPostEvent, ServerHost, ServerTickEvent, ServerTickPhase,
 };
 #[allow(unused_imports)]
 use mod_api::prelude::*;
@@ -35,12 +43,13 @@ pub(crate) const MOD_ID: &str = "storage";
 
 /// Settings (Options > Mods > Storage).
 pub(crate) mod setting {
-    /// Opens every comfort for a world that doesn't use Skills.
-    pub const ALL_COMFORTS: &str = "all_comforts";
+    use crate::kit::setting::Toggle;
     /// A player's own switch for Shulker peek (client).
-    pub const SHULKER_PEEK: &str = "shulker_peek";
+    pub const SHULKER_PEEK: Toggle = Toggle::on("shulker_peek");
     /// The server's switch for Furnaces from chests.
-    pub const FURNACE_FEED: &str = "furnace_feed";
+    pub const FURNACE_FEED: Toggle = Toggle::on("furnace_feed");
+    /// Every setting: every comfort without Skills first.
+    pub const ALL: [Toggle; 3] = [crate::kit::comforts::ALL, SHULKER_PEEK, FURNACE_FEED];
 }
 
 fn on_view(view: payloads::View, _: &mut dyn IPayloadContext) -> Result<(), String> {
@@ -59,9 +68,9 @@ pub struct Mod;
 #[mod_api::horizon_mod]
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
-        let _ = r.register_setting(SettingSpec::toggle(setting::ALL_COMFORTS, "storage.config.all_comforts", false));
-        let _ = r.register_setting(SettingSpec::toggle(setting::SHULKER_PEEK, "storage.config.shulker_peek", true));
-        let _ = r.register_setting(SettingSpec::toggle(setting::FURNACE_FEED, "storage.config.furnace_feed", true));
+        for key in setting::ALL {
+            let _ = r.register_setting(key.spec(MOD_ID));
+        }
         r.attach_item_part_tag("minecraft:shulker_boxes", "storage:peek", std::sync::Arc::new(peek::Peek));
         skills::register(r);
         let mut handlers = r.payload_handlers();
