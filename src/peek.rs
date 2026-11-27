@@ -17,9 +17,16 @@ const SPRITE: &str = "container/slot";
 
 /// Whether the server says this player has the comfort.
 static EARNED: AtomicBool = AtomicBool::new(false);
+/// Whether the server says this player may open a shulker box from the bag (`shulker.rs`).
+static OPEN_EARNED: AtomicBool = AtomicBool::new(false);
 
-pub fn earned(on: bool) {
-    EARNED.store(on, Ordering::Relaxed);
+pub fn earned(peek: bool, open: bool) {
+    EARNED.store(peek, Ordering::Relaxed);
+    OPEN_EARNED.store(open, Ordering::Relaxed);
+}
+
+pub fn open_earned() -> bool {
+    OPEN_EARNED.load(Ordering::Relaxed)
 }
 
 /// Each of the 27 cells' entry in `items` (by its `slot`), or None; out-of-range slots and

@@ -23,6 +23,7 @@ pub mod craft;
 pub mod furnace;
 pub mod organize;
 pub mod peek;
+pub(crate) mod shulker;
 mod client;
 pub mod entries;
 pub mod nbtjson;
@@ -48,8 +49,10 @@ pub(crate) mod setting {
     pub const SHULKER_PEEK: Toggle = Toggle::on("shulker_peek");
     /// The server's switch for Furnaces from chests.
     pub const FURNACE_FEED: Toggle = Toggle::on("furnace_feed");
+    /// The server's switch for opening a shulker box from the bag.
+    pub const SHULKER_OPEN: Toggle = Toggle::on("shulker_open");
     /// Every setting: every comfort without Skills first.
-    pub const ALL: [Toggle; 3] = [crate::kit::comforts::ALL, SHULKER_PEEK, FURNACE_FEED];
+    pub const ALL: [Toggle; 4] = [crate::kit::comforts::ALL, SHULKER_PEEK, FURNACE_FEED, SHULKER_OPEN];
 }
 
 fn on_view(view: payloads::View, _: &mut dyn IPayloadContext) -> Result<(), String> {
@@ -58,7 +61,7 @@ fn on_view(view: payloads::View, _: &mut dyn IPayloadContext) -> Result<(), Stri
 }
 
 fn on_perks(perks: payloads::Perks, _: &mut dyn IPayloadContext) -> Result<(), String> {
-    peek::earned(perks.bits.0 & payloads::perk::PEEK != 0);
+    peek::earned(perks.bits.0 & payloads::perk::PEEK != 0, perks.bits.0 & payloads::perk::OPEN_BOX != 0);
     Ok(())
 }
 
@@ -112,11 +115,13 @@ impl Hooks for Mod {
 
     fn player_container_close(&self, host: &mut dyn ServerHost, event: &mut PlayerContainerCloseEvent<'_>) {
         server::closed(host, event.player);
+        shulker::closed(host, event.player);
     }
 
     fn player_logged_out(&self, _: &mut dyn ServerHost, event: &mut PlayerLoggedOutEvent<'_>) {
         server::forget(event.player);
         skills::forget(event.player);
+        shulker::forget(event.player);
     }
 
     /// Furnaces from chests: a furnace that burned fuel, finished an item or was emptied is
@@ -141,6 +146,18 @@ impl Hooks for Mod {
 
     fn client_tick_pre(&self, host: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
         client::tick(host);
+        shulker::client_tick(host);
+    }
+
+    /// Open a shulker box from the bag: a right-click on one box with an empty cursor, on both
+    /// sides, before vanilla's half-pickup (see `shulker.rs`).
+    fn item_stacked_on_other(&self, context: &dyn mod_api::LoopContext, event: &mut mod_api::ItemStackedOnOtherEvent<'_, '_>) -> Flow {
+        if shulker::clicked(context, event) { Flow::Cancel } else { Flow::Continue }
+    }
+
+    /// A menu `open_menu` opened closed: an open shulker box goes back where it came from.
+    fn menu_closed(&self, host: &mut dyn ServerHost, event: &mut mod_api::MenuClosedEvent) {
+        shulker::closed(host, event.uuid);
     }
 
     fn screen_closing(&self, _: &dyn ClientHost, _: &mut ScreenClosingEvent<'_>) {

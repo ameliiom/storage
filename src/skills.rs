@@ -28,6 +28,8 @@ pub const INVENTORY: &str = "storage.inventory";
 pub const LOW_STOCK: &str = "storage.low_stock";
 /// The tag that shows a shulker box's slots in its tooltip (sent to the client as `Perks`).
 pub const PEEK: &str = "storage.peek";
+/// The tag that opens a shulker box from the bag with a right-click (the node after Peek).
+pub const OPEN_BOX: &str = "storage.open_box";
 /// The tag that lets furnaces touching a network take from it and put results back.
 pub const FURNACE: &str = "storage.furnace";
 /// The comforts a view reports, a bit each in this order (`View::comforts`).
@@ -80,7 +82,10 @@ static SENT: Mutex<BTreeMap<u128, i32>> = Mutex::new(BTreeMap::new());
 pub fn send_perks(host: &mut dyn ServerHost) {
     let Some(token) = crate::payloads::PERKS.get() else { return };
     for p in host.players().server_players() {
-        let bits = if has(&*host, p, PEEK) { crate::payloads::perk::PEEK } else { 0 };
+        let bits = [(PEEK, crate::payloads::perk::PEEK), (OPEN_BOX, crate::payloads::perk::OPEN_BOX)]
+            .into_iter()
+            .filter(|(tag, _)| has(&*host, p, tag))
+            .fold(0, |b, (_, bit)| b | bit);
         let sent = SENT.lock().unwrap_or_else(|e| e.into_inner()).get(&p.uuid()).copied();
         if sent == Some(bits) {
             continue;
@@ -241,10 +246,10 @@ mod tests {
             .filter_map(|p| p["tag"].as_str().map(str::to_owned))
             .collect();
         for tag in &given {
-            let read = COMFORTS.contains(&tag.as_str()) || [CRAFT, PEEK, FURNACE].contains(&tag.as_str()) || kit::comforts::is_level(tag, &[NETWORK]);
+            let read = COMFORTS.contains(&tag.as_str()) || [CRAFT, PEEK, FURNACE, OPEN_BOX].contains(&tag.as_str()) || kit::comforts::is_level(tag, &[NETWORK]);
             assert!(read, "the tree gives {tag}, which Storage never reads");
         }
-        for wanted in COMFORTS.into_iter().chain([CRAFT, PEEK, FURNACE]) {
+        for wanted in COMFORTS.into_iter().chain([CRAFT, PEEK, FURNACE, OPEN_BOX]) {
             assert!(given.iter().any(|t| t == wanted), "no node gives {wanted}");
         }
         assert!(given.iter().any(|t| network_of(std::slice::from_ref(t)) > NETWORK_START));

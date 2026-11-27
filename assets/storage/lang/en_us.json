@@ -51,5 +51,8 @@
   "storage.node.furnace": "Furnaces From Chests",
   "skills.perk.storage.furnace": "A furnace touching your chests takes ore and fuel from them and puts results back",
   "storage.config.shulker_peek": "Shulker box contents in the tooltip",
-  "storage.config.furnace_feed": "Furnaces take from the chests they touch"
+  "storage.config.furnace_feed": "Furnaces take from the chests they touch",
+  "storage.node.open_box": "Shulker From Your Bag",
+  "skills.perk.storage.open_box": "Right-click a shulker box in your inventory: it opens without placing it",
+  "storage.config.shulker_open": "Open a shulker box from your inventory with a right-click"
 }

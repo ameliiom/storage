@@ -223,6 +223,24 @@
           "tag": "storage.furnace"
         }
       ]
+    },
+    {
+      "id": "open_box",
+      "title": "storage.node.open_box",
+      "icon": "minecraft:purple_shulker_box",
+      "at": [
+        0,
+        4
+      ],
+      "cost": 3,
+      "needs": [
+        "peek"
+      ],
+      "perks": [
+        {
+          "tag": "storage.open_box"
+        }
+      ]
     }
   ]
 }

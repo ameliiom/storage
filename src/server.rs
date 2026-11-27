@@ -381,6 +381,7 @@ pub fn tick(host: &mut dyn ServerHost) {
     });
     skills::tick(host, ticks);
     crate::furnace::tick(host);
+    crate::shulker::tick(host, ticks);
     if ticks.is_multiple_of(REFRESH) {
         skills::send_perks(host);
     }

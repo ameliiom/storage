@@ -51,5 +51,8 @@
   "storage.node.furnace": "أفران من الصناديق",
   "skills.perk.storage.furnace": "الفرن اللي لازق بصناديقك ياخذ الخام والوقود منها ويرجّع الناتج",
   "storage.config.shulker_peek": "محتوى صندوق الشلكر بالتلميح",
-  "storage.config.furnace_feed": "الأفران تاخذ من الصناديق اللي لازقة فيها"
+  "storage.config.furnace_feed": "الأفران تاخذ من الصناديق اللي لازقة فيها",
+  "storage.node.open_box": "شلكر من شنطتك",
+  "skills.perk.storage.open_box": "كبس يمين على صندوق الشلكر بشنطتك: ينفتح بدون ما تحطه",
+  "storage.config.shulker_open": "افتح صندوق الشلكر من شنطتك بكبسة يمين"
 }

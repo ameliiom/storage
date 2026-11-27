@@ -93,6 +93,8 @@ pub struct Perks {
 pub mod perk {
     /// Shulker peek: a shulker box's slots in its tooltip.
     pub const PEEK: i32 = 1;
+    /// Open a shulker box from the bag: the client cancels the right-click too.
+    pub const OPEN_BOX: i32 = 2;
 }
 
 pub static VIEW: OnceLock<ToClient<View>> = OnceLock::new();
